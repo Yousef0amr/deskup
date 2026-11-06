@@ -1,0 +1,37 @@
+{
+  "name": "deskup",
+  "version": "1.0.0",
+  "description": "Cross-platform desktop workspace launcher and dashboard",
+  "main": "./out/main/index.js",
+  "author": "Yousef Amr",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron-vite dev",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "package": "electron-vite build && electron-builder",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "electron-store": "^12.0.0",
+    "lucide-react": "^1.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
+    "postcss": "^8.5.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

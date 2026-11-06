@@ -1,0 +1,30 @@
+appId: com.deskup.app
+productName: Deskup
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**/*
+  - resources/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.ico
+  icon: resources/icon.ico
+  forceCodeSigning: false
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Deskup
+mac:
+  target:
+    - dmg
+linux:
+  target:
+    - AppImage
