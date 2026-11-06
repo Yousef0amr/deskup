@@ -1,5 +1,10 @@
 export type ItemType = 'app' | 'folder' | 'url'
 
+export interface InstalledApp {
+  name: string
+  path: string
+}
+
 export interface ProfileItem {
   id: string
   type: ItemType
@@ -98,6 +103,9 @@ export interface DeskupAPI {
   dialog: {
     pickFile(): Promise<string | null>
     pickFolder(): Promise<string | null>
+  }
+  apps: {
+    list(): Promise<InstalledApp[]>
   }
   data: {
     onImported(callback: () => void): () => void

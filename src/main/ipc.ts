@@ -5,6 +5,7 @@ import { mergeSettings } from '../shared/settings'
 import { validateBackup } from '../shared/backup'
 import { join } from 'path'
 import { launchProfileItems } from './launcher'
+import { getInstalledApps } from './apps'
 import {
   copyClipText,
   toggleClipPin,
@@ -209,12 +210,24 @@ export function registerIpcHandlers(
     return updated
   })
 
+  // Applications
+  ipcMain.handle('apps:list', async () => {
+    return getInstalledApps()
+  })
+
   // Dialogs
   ipcMain.handle('dialog:pickFile', async (): Promise<string | null> => {
     const win = getMainWindow()
     const result = await dialog.showOpenDialog(win ?? undefined!, {
-      title: 'Select Application or File',
-      properties: ['openFile']
+      title: 'Select Application or Executable',
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'Applications & Shortcuts (*.exe, *.lnk)',
+          extensions: ['exe', 'lnk', 'bat', 'cmd', 'app']
+        },
+        { name: 'All Files (*.*)', extensions: ['*'] }
+      ]
     })
     if (result.canceled || result.filePaths.length === 0) {
       return null

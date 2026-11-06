@@ -179,10 +179,11 @@ export default function App(): React.JSX.Element {
 
       {/* Main View Area */}
       <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background via-surface to-background p-8">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           {activeTab === 'dashboard' && (
             <DashboardPage
               onNavigateToProfiles={() => setActiveTab('profiles')}
+              onNavigateToClipboard={() => setActiveTab('clipboard')}
             />
           )}
           {activeTab === 'profiles' && <ProfilesPage />}

@@ -117,7 +117,7 @@ export default function RecentClipboardWidget({
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[10px] text-muted font-sans">
-                          {formatTimeAgo(clip.copiedAt)}
+                          {formatTimeAgo(clip.createdAt)}
                         </span>
                         {clip.pinned && (
                           <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-500 font-sans font-medium">

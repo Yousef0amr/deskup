@@ -60,6 +60,9 @@ const api: DeskupAPI = {
     pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
     pickFolder: () => ipcRenderer.invoke('dialog:pickFolder')
   },
+  apps: {
+    list: () => ipcRenderer.invoke('apps:list')
+  },
   data: {
     onImported: callback => {
       ipcRenderer.on('data:imported', callback)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Sun, Moon, Sunrise, Sunset } from 'lucide-react'
+import { Sun, Moon, Sunrise, Sunset, Sparkles } from 'lucide-react'
 
 export default function ClockWidget(): React.JSX.Element {
   const [time, setTime] = useState(new Date())
@@ -45,10 +45,17 @@ export default function ClockWidget(): React.JSX.Element {
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-text">{dateString}</h2>
       </div>
-      <div className="font-mono text-3xl font-bold tracking-tight text-indigo-600 dark:text-indigo-300 bg-elevated/60 px-4 py-2 rounded-xl border border-border/50">
-        {timeString}
+
+      <div className="flex items-center gap-4">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-elevated/40 border border-border/40 text-xs text-muted">
+          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+          <span>One-Click Workspace</span>
+        </div>
+
+        <div className="font-mono text-3xl font-bold tracking-tight text-indigo-600 dark:text-indigo-300 bg-elevated/60 px-4 py-2 rounded-xl border border-border/50 shadow-inner">
+          {timeString}
+        </div>
       </div>
     </div>
   )
 }
-

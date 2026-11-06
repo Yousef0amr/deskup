@@ -7,9 +7,11 @@ import {
   Globe,
   Clock,
   Palette,
-  Smile
+  Smile,
+  Edit3
 } from 'lucide-react'
-import type { Profile, ProfileItem, ItemType } from '../../../shared/types'
+import type { Profile, ProfileItem, ItemType, InstalledApp } from '../../../shared/types'
+import AppPickerModal from './AppPickerModal'
 
 interface ProfileEditorProps {
   profile: Profile | null // null means create new
@@ -37,6 +39,9 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
   const [items, setItems] = useState<ProfileItem[]>(profile?.items || [])
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isAppPickerOpen, setIsAppPickerOpen] = useState(false)
+  const [pickingItemId, setPickingItemId] = useState<string | null>(null)
+  const [manualEditItemIds, setManualEditItemIds] = useState<Record<string, boolean>>({})
 
   // Close on Escape key
   useEffect(() => {
@@ -50,6 +55,11 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
   }, [onClose])
 
   const handleAddItem = (type: ItemType) => {
+    if (type === 'app') {
+      setPickingItemId(null)
+      setIsAppPickerOpen(true)
+      return
+    }
     const newItem: ProfileItem = {
       id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
       type,
@@ -57,6 +67,51 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
       label: ''
     }
     setItems((prev) => [...prev, newItem])
+  }
+
+  const handleSelectApp = (app: InstalledApp) => {
+    if (pickingItemId) {
+      handleUpdateItem(pickingItemId, {
+        target: app.path,
+        label: app.name
+      })
+    } else {
+      const newItem: ProfileItem = {
+        id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
+        type: 'app',
+        label: app.name,
+        target: app.path
+      }
+      setItems((prev) => [...prev, newItem])
+    }
+    setIsAppPickerOpen(false)
+    setPickingItemId(null)
+  }
+
+  const handleBrowseFromPicker = async () => {
+    const targetItemId = pickingItemId
+    setIsAppPickerOpen(false)
+    try {
+      const path = await window.deskup.dialog.pickFile()
+      if (path) {
+        const cleanName = path.split(/[\\/]/).pop()?.replace(/\.(exe|lnk|bat|cmd)$/i, '') || path
+        if (targetItemId) {
+          handleUpdateItem(targetItemId, { target: path, label: cleanName })
+        } else {
+          const newItem: ProfileItem = {
+            id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
+            type: 'app',
+            label: cleanName,
+            target: path
+          }
+          setItems((prev) => [...prev, newItem])
+        }
+      }
+    } catch (err) {
+      console.error('File pick error:', err)
+    } finally {
+      setPickingItemId(null)
+    }
   }
 
   const handleUpdateItem = (id: string, patch: Partial<ProfileItem>) => {
@@ -321,39 +376,108 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
                         className="px-2.5 py-1.5 bg-surface border border-border rounded-lg text-xs text-text placeholder-muted focus:outline-none focus:border-indigo-500"
                       />
 
-                      <div className="sm:col-span-2 flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={it.target}
-                          onChange={(e) => handleUpdateItem(it.id, { target: e.target.value })}
-                          placeholder={
-                            it.type === 'url'
-                              ? 'https://github.com'
-                              : it.type === 'folder'
-                              ? 'C:\\projects\\my-app'
-                              : 'Path or command (e.g. code)'
-                          }
-                          className="flex-1 px-2.5 py-1.5 bg-surface border border-border rounded-lg text-xs text-text placeholder-muted font-mono focus:outline-none focus:border-indigo-500"
-                        />
-                        {it.type === 'app' && (
+                      {it.type === 'app' && !manualEditItemIds[it.id] ? (
+                        <div className="sm:col-span-2 flex items-center gap-1.5">
+                          {it.target ? (
+                            <div className="flex-1 flex items-center justify-between px-3 py-1.5 bg-surface border border-border rounded-lg min-w-0">
+                              <div className="flex items-center gap-2 min-w-0 pr-2">
+                                <AppWindow className="w-4 h-4 text-sky-400 shrink-0" />
+                                <span className="text-xs font-semibold text-text truncate">
+                                  {it.label || it.target.split(/[\\/]/).pop()?.replace(/\.lnk$/i, '') || it.target}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPickingItemId(it.id)
+                                    setIsAppPickerOpen(true)
+                                  }}
+                                  className="px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-md transition-colors"
+                                >
+                                  Change
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setManualEditItemIds((prev) => ({ ...prev, [it.id]: true }))
+                                  }
+                                  title="Edit custom path or command"
+                                  className="p-1 text-muted hover:text-text rounded"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPickingItemId(it.id)
+                                setIsAppPickerOpen(true)
+                              }}
+                              className="flex-1 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                            >
+                              <AppWindow className="w-4 h-4" />
+                              <span>Select an Application...</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handlePickFile(it.id)}
                             className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
+                            title="Browse files for custom .exe or .lnk"
                           >
                             Browse
                           </button>
-                        )}
-                        {it.type === 'folder' && (
-                          <button
-                            type="button"
-                            onClick={() => handlePickFolder(it.id)}
-                            className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
-                          >
-                            Browse
-                          </button>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="sm:col-span-2 flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={it.target}
+                            onChange={(e) => handleUpdateItem(it.id, { target: e.target.value })}
+                            placeholder={
+                              it.type === 'url'
+                                ? 'https://github.com'
+                                : it.type === 'folder'
+                                ? 'C:\\projects\\my-app'
+                                : 'Path or command (e.g. code)'
+                            }
+                            className="flex-1 px-2.5 py-1.5 bg-surface border border-border rounded-lg text-xs text-text placeholder-muted font-mono focus:outline-none focus:border-indigo-500"
+                          />
+                          {it.type === 'app' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPickingItemId(it.id)
+                                  setIsAppPickerOpen(true)
+                                }}
+                                className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-lg whitespace-nowrap"
+                              >
+                                Select App
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePickFile(it.id)}
+                                className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
+                              >
+                                Browse
+                              </button>
+                            </>
+                          )}
+                          {it.type === 'folder' && (
+                            <button
+                              type="button"
+                              onClick={() => handlePickFolder(it.id)}
+                              className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
+                            >
+                              Browse
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -380,6 +504,17 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
           </button>
         </div>
       </div>
+
+      {/* Installed Application Picker Modal */}
+      <AppPickerModal
+        isOpen={isAppPickerOpen}
+        onSelect={handleSelectApp}
+        onClose={() => {
+          setIsAppPickerOpen(false)
+          setPickingItemId(null)
+        }}
+        onBrowseCustomFile={handleBrowseFromPicker}
+      />
     </div>
   )
 }
