@@ -1,12 +1,14 @@
 import { app } from 'electron'
 import Store from 'electron-store'
-import type { Profile, Todo, Settings, ClipItem } from '../shared/types'
+import type { Profile, Todo, Settings, ClipItem, NoteItem, FocusSessionEntry } from '../shared/types'
 
 export interface AppStoreSchema {
   focusState?: import('../shared/types').FocusState
+  focusHistory: FocusSessionEntry[]
   profiles: Profile[]
   todos: Todo[]
   notes: string
+  notesList: NoteItem[]
   clipboardHistory: ClipItem[]
   settings: Settings
 }
@@ -18,9 +20,11 @@ export const store = new Store<AppStoreSchema>({
   name: 'deskup-config',
   cwd: app.getPath('userData'),
   defaults: {
+    focusHistory: [],
     profiles: [],
     todos: [],
     notes: '',
+    notesList: [],
     clipboardHistory: [],
     settings: defaultSettings
   }

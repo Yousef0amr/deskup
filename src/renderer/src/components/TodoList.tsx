@@ -1,21 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import {
-  CheckSquare,
-  Square,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
-  Plus,
-  ListTodo,
-  Sparkles
-} from 'lucide-react'
+import { Plus, ListTodo, Sparkles } from 'lucide-react'
 import type { Todo } from '../../../shared/types'
+import TodoItemRow from './TodoItemRow'
 
-type FilterMode = 'all' | 'active' | 'done'
+type FilterMode = 'all' | 'active' | 'high' | 'done'
 
 export default function TodoList(): React.JSX.Element {
   const [todos, setTodos] = useState<Todo[]>([])
   const [newText, setNewText] = useState('')
+  const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium')
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<FilterMode>('all')
 
@@ -50,31 +43,28 @@ export default function TodoList(): React.JSX.Element {
       id: 'todo_' + Date.now() + Math.random().toString(36).substring(2, 5),
       text: newText.trim(),
       done: false,
-      order: todos.length
+      order: todos.length,
+      priority: newPriority
     }
 
     const updated = [...todos, newTodo]
     setNewText('')
-    saveTodos(updated)
+    void saveTodos(updated)
   }
 
   const handleToggle = (id: string) => {
     const updated = todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-    saveTodos(updated)
+    void saveTodos(updated)
   }
 
   const handleDelete = (id: string) => {
-    const updated = todos
-      .filter((t) => t.id !== id)
-      .map((t, idx) => ({ ...t, order: idx }))
-    saveTodos(updated)
+    const updated = todos.filter((t) => t.id !== id).map((t, idx) => ({ ...t, order: idx }))
+    void saveTodos(updated)
   }
 
   const handleClearCompleted = () => {
-    const updated = todos
-      .filter((t) => !t.done)
-      .map((t, idx) => ({ ...t, order: idx }))
-    saveTodos(updated)
+    const updated = todos.filter((t) => !t.done).map((t, idx) => ({ ...t, order: idx }))
+    void saveTodos(updated)
   }
 
   const handleMove = (index: number, direction: 'up' | 'down') => {
@@ -86,7 +76,11 @@ export default function TodoList(): React.JSX.Element {
     reordered.splice(targetIndex, 0, moved)
 
     const updated = reordered.map((t, idx) => ({ ...t, order: idx }))
-    saveTodos(updated)
+    void saveTodos(updated)
+  }
+
+  const handleFocusOnTask = (taskText: string) => {
+    void window.deskup.focus.action('start', { taskName: taskText, category: 'Deep Work' })
   }
 
   const completedCount = todos.filter((t) => t.done).length
@@ -95,6 +89,7 @@ export default function TodoList(): React.JSX.Element {
 
   const filteredTodos = todos.filter((t) => {
     if (filter === 'active') return !t.done
+    if (filter === 'high') return t.priority === 'high' && !t.done
     if (filter === 'done') return t.done
     return true
   })
@@ -117,36 +112,42 @@ export default function TodoList(): React.JSX.Element {
       </div>
 
       {/* Filter Tabs & Add Form */}
-      <div className="space-y-2.5 mb-3">
+      <div className="space-y-2 mb-3">
         <div className="flex items-center justify-between">
           <div className="flex bg-elevated/60 p-0.5 rounded-lg border border-border/40 text-[11px] font-medium">
             <button
               type="button"
               onClick={() => setFilter('all')}
-              className={`px-2.5 py-1 rounded-md transition-all ${filter === 'all'
-                  ? 'bg-surface text-text shadow-sm font-semibold'
-                  : 'text-muted hover:text-text'
-                }`}
+              className={`px-2.5 py-1 rounded-md transition-all ${
+                filter === 'all' ? 'bg-surface text-text shadow-sm font-semibold' : 'text-muted hover:text-text'
+              }`}
             >
               All ({totalCount})
             </button>
             <button
               type="button"
               onClick={() => setFilter('active')}
-              className={`px-2.5 py-1 rounded-md transition-all ${filter === 'active'
-                  ? 'bg-surface text-text shadow-sm font-semibold'
-                  : 'text-muted hover:text-text'
-                }`}
+              className={`px-2.5 py-1 rounded-md transition-all ${
+                filter === 'active' ? 'bg-surface text-text shadow-sm font-semibold' : 'text-muted hover:text-text'
+              }`}
             >
               Active ({totalCount - completedCount})
             </button>
             <button
               type="button"
+              onClick={() => setFilter('high')}
+              className={`px-2.5 py-1 rounded-md transition-all ${
+                filter === 'high' ? 'bg-surface text-rose-500 shadow-sm font-semibold' : 'text-muted hover:text-text'
+              }`}
+            >
+              High ({todos.filter((t) => t.priority === 'high' && !t.done).length})
+            </button>
+            <button
+              type="button"
               onClick={() => setFilter('done')}
-              className={`px-2.5 py-1 rounded-md transition-all ${filter === 'done'
-                  ? 'bg-surface text-text shadow-sm font-semibold'
-                  : 'text-muted hover:text-text'
-                }`}
+              className={`px-2.5 py-1 rounded-md transition-all ${
+                filter === 'done' ? 'bg-surface text-text shadow-sm font-semibold' : 'text-muted hover:text-text'
+              }`}
             >
               Done ({completedCount})
             </button>
@@ -164,18 +165,28 @@ export default function TodoList(): React.JSX.Element {
         </div>
 
         {/* Add Todo Input */}
-        <form onSubmit={handleAddTodo} className="flex gap-2">
+        <form onSubmit={handleAddTodo} className="flex gap-1.5">
           <input
             type="text"
             value={newText}
             onChange={(e) => setNewText(e.target.value)}
-            placeholder="Add a new task (Press Enter)..."
-            className="min-w-0 flex-1 px-3.5 py-2 bg-elevated/80 border border-border/80 rounded-xl text-xs text-text placeholder-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Add a new task (e.g. Finish report)..."
+            className="min-w-0 flex-1 px-3 py-1.5 bg-elevated/80 border border-border/80 rounded-xl text-xs text-text placeholder-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
+          <select
+            value={newPriority}
+            onChange={(e) => setNewPriority(e.target.value as 'high' | 'medium' | 'low')}
+            className="px-2 py-1.5 bg-elevated/80 border border-border/80 rounded-xl text-xs text-text focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            title="Set task priority"
+          >
+            <option value="high">🔴 High</option>
+            <option value="medium">🟡 Med</option>
+            <option value="low">🟢 Low</option>
+          </select>
           <button
             type="submit"
             disabled={!newText.trim()}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors shrink-0 shadow-sm"
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors shrink-0 shadow-sm"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add</span>
@@ -184,7 +195,7 @@ export default function TodoList(): React.JSX.Element {
       </div>
 
       {/* Todo Items */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px] max-h-[260px]">
+      <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[250px]">
         {isLoading ? (
           <p className="text-xs text-muted py-8 text-center">Loading tasks...</p>
         ) : filteredTodos.length === 0 ? (
@@ -197,60 +208,21 @@ export default function TodoList(): React.JSX.Element {
                 <span>All caught up! Zero pending tasks.</span>
               </div>
             ) : (
-              <p>No tasks yet. Take a breath or add one above!</p>
+              <p>No tasks found. Add a task above!</p>
             )}
           </div>
         ) : (
           filteredTodos.map((todo, index) => (
-            <div
+            <TodoItemRow
               key={todo.id}
-              className={`group flex items-center justify-between p-2.5 rounded-xl border transition-all ${todo.done
-                  ? 'bg-surface/40 border-border/40 text-muted line-through'
-                  : 'bg-elevated/50 border-border/50 text-text hover:border-border'
-                }`}
-            >
-              <button
-                type="button"
-                onClick={() => handleToggle(todo.id)}
-                className="flex items-center gap-2.5 flex-1 text-left min-w-0"
-              >
-                {todo.done ? (
-                  <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                ) : (
-                  <Square className="w-4 h-4 text-muted group-hover:text-indigo-400 shrink-0" />
-                )}
-                <span className="text-xs truncate font-medium">{todo.text}</span>
-              </button>
-
-              <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                <button
-                  type="button"
-                  onClick={() => handleMove(index, 'up')}
-                  disabled={index === 0}
-                  className="p-1 text-muted hover:text-text disabled:opacity-20 rounded"
-                  title="Move Up"
-                >
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleMove(index, 'down')}
-                  disabled={index === filteredTodos.length - 1}
-                  className="p-1 text-muted hover:text-text disabled:opacity-20 rounded"
-                  title="Move Down"
-                >
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(todo.id)}
-                  className="p-1 text-muted hover:text-rose-400 rounded"
-                  title="Delete"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+              todo={todo}
+              index={index}
+              totalCount={filteredTodos.length}
+              onToggle={handleToggle}
+              onMove={handleMove}
+              onDelete={handleDelete}
+              onFocusTask={handleFocusOnTask}
+            />
           ))
         )}
       </div>

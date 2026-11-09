@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Layers,
   ClipboardList,
+  FileText,
   Settings as SettingsIcon,
   ShieldCheck,
   Sparkles,
@@ -10,15 +11,18 @@ import {
 } from 'lucide-react'
 import DashboardPage from './pages/DashboardPage'
 import ProfilesPage from './pages/ProfilesPage'
+import NotesPage from './pages/NotesPage'
 import ClipboardPage from './pages/ClipboardPage'
 import SettingsPage from './pages/SettingsPage'
 import ClipboardPopup from './components/ClipboardPopup'
+import CommandPaletteModal from './components/CommandPalette/CommandPaletteModal'
 
 export default function App(): React.JSX.Element {
   const isPopup = window.location.hash === '#clipboard-popup'
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'profiles' | 'clipboard' | 'settings'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'profiles' | 'notes' | 'clipboard' | 'settings'>('dashboard')
   const [currentTheme, setCurrentTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [hotkeys, setHotkeys] = useState({ main: '', clipboard: '' })
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
 
   // Apply theme class
   const applyTheme = (theme: 'light' | 'dark' | 'system') => {
@@ -69,8 +73,18 @@ export default function App(): React.JSX.Element {
     }
 
     mediaQuery.addEventListener('change', handleSystemChange)
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setIsCommandPaletteOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+
     return () => {
       mediaQuery.removeEventListener('change', handleSystemChange)
+      window.removeEventListener('keydown', handleGlobalKeyDown)
       unsubscribeSettings()
       unsubscribeImport()
     }
@@ -99,6 +113,21 @@ export default function App(): React.JSX.Element {
             </div>
           </div>
 
+          {/* Command Palette Quick Launcher */}
+          <button
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-elevated/70 hover:bg-hover border border-border/60 text-xs text-muted hover:text-text transition-all cursor-pointer group"
+            title="Open Command Palette (Ctrl+K)"
+          >
+            <div className="flex items-center gap-2">
+              <Command className="w-3.5 h-3.5 text-indigo-500 group-hover:scale-110 transition-transform" />
+              <span className="font-medium">Command Bar</span>
+            </div>
+            <kbd className="text-[10px] bg-surface px-1.5 py-0.5 rounded border border-border/80 font-mono text-muted">
+              Ctrl+K
+            </kbd>
+          </button>
+
           {/* Navigation Links */}
           <nav className="space-y-1">
             <button
@@ -123,6 +152,18 @@ export default function App(): React.JSX.Element {
             >
               <Layers className="h-4 w-4" />
               <span>Workspaces</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === 'notes'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                  : 'text-muted hover:text-text hover:bg-elevated/60'
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              <span>Notes</span>
             </button>
 
             <button
@@ -184,13 +225,23 @@ export default function App(): React.JSX.Element {
             <DashboardPage
               onNavigateToProfiles={() => setActiveTab('profiles')}
               onNavigateToClipboard={() => setActiveTab('clipboard')}
+              onNavigateToNotes={() => setActiveTab('notes')}
             />
           )}
           {activeTab === 'profiles' && <ProfilesPage />}
+          {activeTab === 'notes' && <NotesPage />}
           {activeTab === 'clipboard' && <ClipboardPage />}
           {activeTab === 'settings' && <SettingsPage onThemeChange={applyTheme} />}
         </div>
       </main>
+
+      {/* Global Command Palette */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={setActiveTab}
+        onThemeChange={applyTheme}
+      />
     </div>
   )
 }

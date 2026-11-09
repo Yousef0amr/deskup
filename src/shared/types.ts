@@ -32,6 +32,31 @@ export interface Todo {
   text: string
   done: boolean
   order: number
+  priority?: 'high' | 'medium' | 'low'
+  dueDate?: string
+}
+
+export interface NoteItem {
+  id: string
+  title: string
+  content: string
+  createdAt: number
+  updatedAt: number
+  pinned?: boolean
+  folder?: string
+  color?: string
+  tags?: string[]
+}
+
+export interface FocusSessionEntry {
+  id: string
+  taskName: string
+  category?: string
+  startedAt: number
+  endedAt: number
+  durationMs: number
+  completed: boolean
+  mode: 'work' | 'break'
 }
 
 export interface FocusState {
@@ -39,6 +64,9 @@ export interface FocusState {
   remainingMs: number
   endsAt: number | null
   sessionsCompleted: number
+  currentTask?: string
+  currentCategory?: string
+  startedAt?: number | null
 }
 export type FocusAction = 'start' | 'pause' | 'reset' | 'skip'
 
@@ -65,11 +93,24 @@ export interface Settings {
   clipboard: ClipboardSettings
 }
 
+export interface SystemStats {
+  cpuPercent: number
+  totalMemGb: number
+  usedMemGb: number
+  memPercent: number
+  uptimeHours: number
+  appMemMb: number
+}
+
 export interface DeskupAPI {
   focus: {
     get(): Promise<FocusState>
-    action(action: FocusAction): Promise<FocusState>
+    action(action: FocusAction, payload?: { taskName?: string; category?: string }): Promise<FocusState>
     onChanged(callback: (state: FocusState) => void): () => void
+    getHistory(): Promise<FocusSessionEntry[]>
+    addHistory(entry: Omit<FocusSessionEntry, 'id'>): Promise<FocusSessionEntry>
+    deleteHistoryItem(id: string): Promise<void>
+    clearHistory(): Promise<void>
   }
   profiles: {
     list(): Promise<Profile[]>
@@ -84,6 +125,14 @@ export interface DeskupAPI {
   notes: {
     get(): Promise<string>
     save(text: string): Promise<void>
+    list(): Promise<NoteItem[]>
+    saveNote(note: NoteItem): Promise<NoteItem>
+    saveAll(notes: NoteItem[]): Promise<void>
+    delete(id: string): Promise<void>
+    create(title?: string, content?: string, folder?: string, color?: string): Promise<NoteItem>
+  }
+  system: {
+    getStats(): Promise<SystemStats>
   }
   clipboard: {
     list(): Promise<ClipItem[]>

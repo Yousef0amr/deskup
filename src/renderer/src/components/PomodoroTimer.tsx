@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import type { FocusState, FocusAction } from '../../../shared/types'
-import { Play, Pause, RotateCcw, SkipForward, Coffee, Flame, Sparkles } from 'lucide-react'
+import type { FocusState, FocusAction, FocusSessionEntry } from '../../../shared/types'
+import { Coffee, Flame, Clock, BarChart2 } from 'lucide-react'
+import FocusHistoryModal from './FocusHistoryModal'
+import ClockifyTaskBar from './ClockifyTaskBar'
+import AmbientSoundPlayer from './AmbientSoundPlayer'
+import PomodoroControls from './PomodoroControls'
+import ProductivityAnalyticsModal from './ProductivityAnalyticsModal'
 
 interface PomodoroTimerProps {
   workMinutes?: number
@@ -14,13 +19,32 @@ export default function PomodoroTimer({
   const [state, setState] = useState<FocusState | null>(null)
   const [now, setNow] = useState(Date.now())
   const [error, setError] = useState('')
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false)
+  const [history, setHistory] = useState<FocusSessionEntry[]>([])
+  const [taskName, setTaskName] = useState('Deep Work')
+  const [category, setCategory] = useState('Coding')
+
+  const loadHistory = async () => {
+    try {
+      const entries = await window.deskup.focus.getHistory()
+      setHistory(entries)
+    } catch {
+      // Ignored
+    }
+  }
 
   useEffect(() => {
-    const unsubscribe = window.deskup.focus.onChanged(setState)
+    const unsubscribe = window.deskup.focus.onChanged((nextState) => {
+      setState(nextState)
+      void loadHistory()
+    })
     window.deskup.focus
       .get()
       .then(setState)
       .catch(() => setError('Could not load timer. Reopen this page to retry.'))
+    void loadHistory()
+
     const timer = setInterval(() => setNow(Date.now()), 250)
     return () => {
       unsubscribe()
@@ -30,12 +54,35 @@ export default function PomodoroTimer({
 
   const act = async (action: FocusAction) => {
     try {
-      setState(await window.deskup.focus.action(action))
+      const next = await window.deskup.focus.action(action, { taskName, category })
+      setState(next)
       setNow(Date.now())
       setError('')
+      void loadHistory()
     } catch {
       setError('Could not update timer. Please try again.')
     }
+  }
+
+  const handleDeleteHistory = async (id: string) => {
+    await window.deskup.focus.deleteHistoryItem(id).catch(() => {})
+    setHistory((prev) => prev.filter((h) => h.id !== id))
+  }
+
+  const handleClearHistory = async () => {
+    await window.deskup.focus.clearHistory().catch(() => {})
+    setHistory([])
+  }
+
+  const handleAddManual = async (entry: Omit<FocusSessionEntry, 'id'>) => {
+    const created = await window.deskup.focus.addHistory(entry).catch(() => null)
+    if (created) setHistory((prev) => [created, ...prev])
+  }
+
+  const handleReRunTask = (reTask: string, reCategory?: string) => {
+    setTaskName(reTask)
+    if (reCategory) setCategory(reCategory)
+    void act('start')
   }
 
   const mode = state?.mode ?? 'work'
@@ -44,16 +91,6 @@ export default function PomodoroTimer({
   const timeLeft = Math.ceil(
     Math.max(0, state?.endsAt != null ? state.endsAt - now : state?.remainingMs ?? workMinutes * 60000) / 1000
   )
-
-  const toggleStartPause = () => {
-    if (state) void act(isRunning ? 'pause' : 'start')
-  }
-  const handleReset = () => {
-    if (state) void act('reset')
-  }
-  const handleSkip = () => {
-    if (state) void act('skip')
-  }
 
   const minutes = Math.floor(timeLeft / 60)
   const seconds = timeLeft % 60
@@ -86,11 +123,38 @@ export default function PomodoroTimer({
               </p>
             </div>
           </div>
-          <span className="text-[11px] font-medium text-muted bg-elevated px-2.5 py-1 rounded-full border border-border/60 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>{sessionsCompleted} completed</span>
-          </span>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsAnalyticsOpen(true)}
+              className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-full border border-amber-500/30 flex items-center gap-1 transition-colors"
+              title="View Weekly Focus Analytics & Streaks"
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span>Streaks</span>
+            </button>
+
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30 flex items-center gap-1.5 transition-colors"
+              title="Open Clockify Focus History"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>History ({history.length})</span>
+            </button>
+          </div>
         </div>
+
+        {/* Clockify Task & Category Selector */}
+        {mode === 'work' && (
+          <ClockifyTaskBar
+            taskName={taskName}
+            category={category}
+            isRunning={isRunning}
+            onTaskNameChange={setTaskName}
+            onCategoryChange={setCategory}
+          />
+        )}
 
         {error && (
           <p role="alert" className="text-xs text-rose-600 dark:text-rose-400 mt-1">
@@ -101,7 +165,7 @@ export default function PomodoroTimer({
 
       {/* Main Timer Display */}
       <div className="flex flex-col items-center justify-center my-auto py-2">
-        <div className="text-6xl font-mono font-bold tracking-tight text-text mb-3 select-none">
+        <div className="text-6xl font-mono font-bold tracking-tight text-text mb-2.5 select-none">
           {formattedTime}
         </div>
 
@@ -118,57 +182,42 @@ export default function PomodoroTimer({
             />
           </div>
           <div className="flex justify-between items-center text-[10px] text-muted px-0.5 font-medium">
-            <span>{isRunning ? 'Session running' : 'Ready'}</span>
+            <span>{isRunning ? `Focusing on "${taskName}"` : 'Ready to focus'}</span>
             <span>{Math.round(progressPercent)}% elapsed</span>
           </div>
         </div>
       </div>
 
-      {/* Bottom Controls */}
-      <div>
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <button
-            onClick={handleReset}
-            className="p-2.5 text-muted hover:text-text hover:bg-elevated rounded-xl transition-colors border border-transparent hover:border-border/60"
-            title="Reset Session"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
+      {/* Ambient Sound Player & Controls */}
+      <div className="space-y-2">
+        <AmbientSoundPlayer />
 
-          <button
-            onClick={toggleStartPause}
-            className={`px-8 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 text-white shadow-lg transition-all active:scale-95 ${
-              isRunning
-                ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30'
-                : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
-            }`}
-          >
-            {isRunning ? (
-              <>
-                <Pause className="w-4 h-4" />
-                <span>Pause</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 fill-white" />
-                <span>Start Focus</span>
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={handleSkip}
-            className="p-2.5 text-muted hover:text-text hover:bg-elevated rounded-xl transition-colors border border-transparent hover:border-border/60"
-            title="Skip to next phase"
-          >
-            <SkipForward className="w-4 h-4" />
-          </button>
-        </div>
-
-        <p className="text-[11px] text-muted text-center mt-3">
-          Continues automatically in background and system tray.
-        </p>
+        <PomodoroControls
+          isRunning={isRunning}
+          sessionsCompleted={sessionsCompleted}
+          onReset={() => void act('reset')}
+          onTogglePlay={() => void act(isRunning ? 'pause' : 'start')}
+          onSkip={() => void act('skip')}
+        />
       </div>
+
+      {/* Clockify History Modal */}
+      <FocusHistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        entries={history}
+        onDeleteEntry={handleDeleteHistory}
+        onClearHistory={handleClearHistory}
+        onReRunTask={handleReRunTask}
+        onAddManualEntry={handleAddManual}
+      />
+
+      {/* Productivity Analytics Modal */}
+      <ProductivityAnalyticsModal
+        isOpen={isAnalyticsOpen}
+        onClose={() => setIsAnalyticsOpen(false)}
+        entries={history}
+      />
     </div>
   )
 }

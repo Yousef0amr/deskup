@@ -10,12 +10,16 @@ import type {
 const api: DeskupAPI = {
   focus: {
     get: () => ipcRenderer.invoke('focus:get'),
-    action: action => ipcRenderer.invoke('focus:action', action),
+    action: (action, payload) => ipcRenderer.invoke('focus:action', action, payload),
     onChanged: callback => {
       const handler = (_: unknown, state: import('../shared/types').FocusState) => callback(state)
       ipcRenderer.on('focus:changed', handler)
       return () => { ipcRenderer.removeListener('focus:changed', handler) }
-    }
+    },
+    getHistory: () => ipcRenderer.invoke('focus:getHistory'),
+    addHistory: (entry) => ipcRenderer.invoke('focus:addHistory', entry),
+    deleteHistoryItem: (id) => ipcRenderer.invoke('focus:deleteHistoryItem', id),
+    clearHistory: () => ipcRenderer.invoke('focus:clearHistory')
   },
   profiles: {
     list: () => ipcRenderer.invoke('profiles:list'),
@@ -29,7 +33,16 @@ const api: DeskupAPI = {
   },
   notes: {
     get: () => ipcRenderer.invoke('notes:get'),
-    save: (text: string) => ipcRenderer.invoke('notes:save', text)
+    save: (text: string) => ipcRenderer.invoke('notes:save', text),
+    list: () => ipcRenderer.invoke('notes:list'),
+    saveNote: (note: import('../shared/types').NoteItem) => ipcRenderer.invoke('notes:saveNote', note),
+    saveAll: (notes: import('../shared/types').NoteItem[]) => ipcRenderer.invoke('notes:saveAll', notes),
+    delete: (id: string) => ipcRenderer.invoke('notes:delete', id),
+    create: (title?: string, content?: string, folder?: string, color?: string) =>
+      ipcRenderer.invoke('notes:create', title, content, folder, color)
+  },
+  system: {
+    getStats: () => ipcRenderer.invoke('system:getStats')
   },
   clipboard: {
     list: () => ipcRenderer.invoke('clipboard:list'),

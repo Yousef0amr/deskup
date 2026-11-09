@@ -1,11 +1,13 @@
-import type { Profile, Todo, ClipItem, Settings } from './types'
+import type { Profile, Todo, ClipItem, Settings, NoteItem, FocusSessionEntry } from './types'
 import { defaultSettings, mergeSettings } from './settings'
 
 interface Backup {
   profiles?: Profile[]
   todos?: Todo[]
   notes?: string
+  notesList?: NoteItem[]
   clipboardHistory?: ClipItem[]
+  focusHistory?: FocusSessionEntry[]
   settings?: Settings
 }
 type RecordValue = Record<string, unknown>
@@ -50,9 +52,15 @@ export function validateBackup(value: unknown): Backup {
         if (item.type === 'url' && !['http:', 'https:'].includes(new URL(item.target as string).protocol)) throw new Error('Invalid launch URL')
       })
     }),
-    todos: value => rows(value, row => fields(row, { text: 'string', done: 'boolean', order: 'number' })),
+    todos: value => rows(value, row => fields(row, { text: 'string', done: 'boolean', order: 'number' }, { priority: 'string', dueDate: 'string' })),
     clipboardHistory: value => rows(value, row => fields(row, { text: 'string', createdAt: 'number', pinned: 'boolean' })),
     notes: value => { if (typeof value !== 'string') throw new Error('Invalid notes') },
+    notesList: value => rows(value, row => {
+      fields(row, { title: 'string', content: 'string', createdAt: 'number', updatedAt: 'number' }, { pinned: 'boolean' })
+    }),
+    focusHistory: value => rows(value, row => {
+      fields(row, { taskName: 'string', startedAt: 'number', endedAt: 'number', durationMs: 'number', completed: 'boolean', mode: 'string' }, { category: 'string' })
+    }),
     settings: value => {
       const settings = object(value)
       // Validate every known nested field before filling defaults for older backups.

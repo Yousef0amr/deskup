@@ -12,15 +12,18 @@ import TodoList from '../components/TodoList'
 import QuickNotes from '../components/QuickNotes'
 import PomodoroTimer from '../components/PomodoroTimer'
 import RecentClipboardWidget from '../components/RecentClipboardWidget'
+import SystemMonitorWidget from '../components/SystemMonitorWidget'
 
 interface DashboardPageProps {
   onNavigateToProfiles: () => void
   onNavigateToClipboard?: () => void
+  onNavigateToNotes?: () => void
 }
 
 export default function DashboardPage({
   onNavigateToProfiles,
-  onNavigateToClipboard
+  onNavigateToClipboard,
+  onNavigateToNotes
 }: DashboardPageProps): React.JSX.Element {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -154,7 +157,7 @@ export default function DashboardPage({
 
         {/* Bottom-Left: Quick Scratchpad */}
         <div className="flex flex-col">
-          <QuickNotes />
+          <QuickNotes onNavigateToNotes={onNavigateToNotes} />
         </div>
 
         {/* Bottom-Right: Recent Clipboard Clips */}
@@ -162,6 +165,9 @@ export default function DashboardPage({
           <RecentClipboardWidget onNavigateToClipboard={onNavigateToClipboard} />
         </div>
       </div>
+
+      {/* Real-Time System Resource Monitor */}
+      <SystemMonitorWidget />
     </div>
   )
 }

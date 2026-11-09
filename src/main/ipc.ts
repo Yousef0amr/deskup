@@ -1,5 +1,6 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import { promises as fs } from 'fs'
+import os from 'os'
 import { store, defaultSettings } from './store'
 import { mergeSettings } from '../shared/settings'
 import { validateBackup } from '../shared/backup'
@@ -19,7 +20,9 @@ import type {
   Todo,
   Settings,
   LaunchResult,
-  ClipItem
+  ClipItem,
+  NoteItem,
+  SystemStats
 } from '../shared/types'
 
 export interface IpcCallbacks {
@@ -112,16 +115,171 @@ export function registerIpcHandlers(
     store.set('todos', cleanTodos)
   })
 
-  // Notes
+  // Notes (Multi-note support + legacy fallback)
+  const getOrInitNotesList = (): NoteItem[] => {
+    let list = store.get('notesList', [])
+    if (!list || list.length === 0) {
+      const legacy = store.get('notes', '')
+      const initial: NoteItem = {
+        id: 'note_' + Date.now(),
+        title: legacy.trim() ? 'Quick Scratchpad' : 'Welcome Note',
+        content: legacy.trim()
+          ? legacy
+          : 'Welcome to Deskup Notes!\n\nYou can create multiple notes, name them, and organize your daily work.\n\n- Brainstorms & quick ideas\n- Code snippets & terminal commands\n- Meeting notes & daily tasks\n\nAuto-saves automatically as you type!',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
+      list = [initial]
+      store.set('notesList', list)
+      store.set('notes', initial.content)
+    }
+    return list
+  }
+
+  ipcMain.handle('notes:list', async (): Promise<NoteItem[]> => {
+    return getOrInitNotesList()
+  })
+
+  ipcMain.handle(
+    'notes:create',
+    async (
+      _,
+      title?: unknown,
+      content?: unknown,
+      folder?: unknown,
+      color?: unknown
+    ): Promise<NoteItem> => {
+      const list = getOrInitNotesList()
+      const newNote: NoteItem = {
+        id: 'note_' + Date.now() + Math.random().toString(36).substring(2, 6),
+        title: typeof title === 'string' && title.trim() ? title.trim() : 'Untitled Note',
+        content: typeof content === 'string' ? content : '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        folder: typeof folder === 'string' && folder.trim() ? folder.trim() : 'General',
+        color: typeof color === 'string' ? color : 'indigo'
+      }
+      const updated = [newNote, ...list]
+      store.set('notesList', updated)
+      store.set('notes', updated[0]?.content ?? '')
+      return newNote
+    }
+  )
+
+  ipcMain.handle('notes:saveNote', async (_, note: unknown): Promise<NoteItem> => {
+    if (!note || typeof note !== 'object') throw new Error('Note must be an object')
+    const n = note as NoteItem
+    if (!n.id || typeof n.id !== 'string') throw new Error('Note ID is required')
+
+    const list = getOrInitNotesList()
+    const cleanNote: NoteItem = {
+      id: n.id,
+      title: typeof n.title === 'string' ? n.title : 'Untitled',
+      content: typeof n.content === 'string' ? n.content : '',
+      createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
+      updatedAt: Date.now(),
+      pinned: Boolean(n.pinned),
+      folder: typeof n.folder === 'string' && n.folder.trim() ? n.folder.trim() : 'General',
+      color: typeof n.color === 'string' ? n.color : 'indigo',
+      tags: Array.isArray(n.tags) ? n.tags.filter((t) => typeof t === 'string') : []
+    }
+
+    const idx = list.findIndex((item) => item.id === cleanNote.id)
+    let updated: NoteItem[]
+    if (idx !== -1) {
+      updated = [...list]
+      updated[idx] = cleanNote
+    } else {
+      updated = [cleanNote, ...list]
+    }
+
+    store.set('notesList', updated)
+    store.set('notes', updated[0]?.content ?? '')
+    return cleanNote
+  })
+
+  ipcMain.handle('notes:saveAll', async (_, notesList: unknown): Promise<void> => {
+    if (!Array.isArray(notesList)) throw new Error('Notes must be an array')
+    const cleanList: NoteItem[] = notesList.map((n) => ({
+      id: String(n.id || 'note_' + Date.now()),
+      title: String(n.title || 'Untitled'),
+      content: String(n.content || ''),
+      createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
+      updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
+      pinned: Boolean(n.pinned)
+    }))
+    store.set('notesList', cleanList)
+    store.set('notes', cleanList[0]?.content ?? '')
+  })
+
+  ipcMain.handle('notes:delete', async (_, id: unknown): Promise<void> => {
+    if (typeof id !== 'string' || !id) throw new Error('Note ID is required')
+    const list = getOrInitNotesList()
+    let updated = list.filter((n) => n.id !== id)
+    if (updated.length === 0) {
+      updated = [
+        {
+          id: 'note_' + Date.now(),
+          title: 'Scratchpad',
+          content: '',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }
+      ]
+    }
+    store.set('notesList', updated)
+    store.set('notes', updated[0]?.content ?? '')
+  })
+
+  // Legacy backwards compatibility
   ipcMain.handle('notes:get', async (): Promise<string> => {
-    return store.get('notes', '')
+    const list = getOrInitNotesList()
+    return list[0]?.content ?? store.get('notes', '')
   })
 
   ipcMain.handle('notes:save', async (_, text: unknown): Promise<void> => {
     if (typeof text !== 'string') {
       throw new Error('Notes must be a string')
     }
+    const list = getOrInitNotesList()
+    if (list.length > 0) {
+      list[0].content = text
+      list[0].updatedAt = Date.now()
+      store.set('notesList', list)
+    }
     store.set('notes', text)
+  })
+
+  // System Resource Stats
+  ipcMain.handle('system:getStats', async (): Promise<SystemStats> => {
+    const totalMem = os.totalmem()
+    const freeMem = os.freemem()
+    const usedMem = totalMem - freeMem
+    const memPercent = Math.round((usedMem / totalMem) * 100)
+    const totalMemGb = Math.round((totalMem / (1024 * 1024 * 1024)) * 10) / 10
+    const usedMemGb = Math.round((usedMem / (1024 * 1024 * 1024)) * 10) / 10
+    const uptimeHours = Math.round((os.uptime() / 3600) * 10) / 10
+    const appMemMb = Math.round(process.memoryUsage().rss / (1024 * 1024))
+
+    const cpus = os.cpus()
+    let totalIdle = 0
+    let totalTick = 0
+    for (const cpu of cpus) {
+      for (const type in cpu.times) {
+        totalTick += cpu.times[type as keyof typeof cpu.times]
+      }
+      totalIdle += cpu.times.idle
+    }
+    const cpuPercent = totalTick > 0 ? Math.min(100, Math.max(1, Math.round(100 - (totalIdle / totalTick) * 100))) : 5
+
+    return {
+      cpuPercent,
+      totalMemGb,
+      usedMemGb,
+      memPercent,
+      uptimeHours,
+      appMemMb
+    }
   })
 
   // Clipboard
@@ -264,6 +422,7 @@ export function registerIpcHandlers(
       profiles: store.get('profiles', []),
       todos: store.get('todos', []),
       notes: store.get('notes', ''),
+      notesList: store.get('notesList', []),
       clipboardHistory: store.get('clipboardHistory', []),
       settings: store.get('settings', defaultSettings)
     }
