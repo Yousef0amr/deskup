@@ -1,9 +1,16 @@
-import type { Profile, Todo, ClipItem, Settings, NoteItem, FocusSessionEntry } from './types'
+import type { Profile, Todo, Habit, ClipItem, Settings, NoteItem, FocusSessionEntry } from './types'
 import { defaultSettings, mergeSettings } from './settings'
+import { validateTodos } from './todos'
+import { validateHabits } from './habits'
+import { validateBoardData, type BoardData } from './board'
+import { validateWhiteboards, type Whiteboard } from './whiteboard'
 
 interface Backup {
   profiles?: Profile[]
   todos?: Todo[]
+  habits?: Habit[]
+  boardData?: BoardData
+  whiteboards?: Whiteboard[]
   notes?: string
   notesList?: NoteItem[]
   clipboardHistory?: ClipItem[]
@@ -36,10 +43,12 @@ function rows(value: unknown, check: (row: RecordValue) => void): void {
   }
 }
 
+export const BACKUP_VERSION = 6
+
 export function validateBackup(value: unknown): Backup {
   const raw = object(value)
-  if (!Number.isInteger(raw.version) || (raw.version as number) < 1 || (raw.version as number) > 5) {
-    throw new Error('Unsupported backup version (expected 1–5)')
+  if (!Number.isInteger(raw.version) || (raw.version as number) < 1 || (raw.version as number) > BACKUP_VERSION) {
+    throw new Error(`Unsupported backup version (expected 1–${BACKUP_VERSION})`)
   }
   const result: RecordValue = {}
   const validators: Record<string, (value: unknown) => void> = {
@@ -52,7 +61,10 @@ export function validateBackup(value: unknown): Backup {
         if (item.type === 'url' && !['http:', 'https:'].includes(new URL(item.target as string).protocol)) throw new Error('Invalid launch URL')
       })
     }),
-    todos: value => rows(value, row => fields(row, { text: 'string', done: 'boolean', order: 'number' }, { priority: 'string', dueDate: 'string' })),
+    todos: value => { validateTodos(value) },
+    habits: value => { validateHabits(value) },
+    boardData: value => { validateBoardData(value) },
+    whiteboards: value => { validateWhiteboards(value) },
     clipboardHistory: value => rows(value, row => fields(row, { text: 'string', createdAt: 'number', pinned: 'boolean' })),
     notes: value => { if (typeof value !== 'string') throw new Error('Invalid notes') },
     notesList: value => rows(value, row => {
@@ -76,7 +88,7 @@ export function validateBackup(value: unknown): Backup {
       }
       const merged = mergeSettings(settings as Partial<Settings>)
       if (!['light', 'dark', 'system'].includes(merged.theme)) throw new Error('Invalid theme')
-      for (const n of [merged.pomodoro.workMin, merged.pomodoro.breakMin, merged.clipboard.maxItems]) {
+      for (const n of [merged.pomodoro.workMin, merged.pomodoro.breakMin, merged.clipboard.maxItems, merged.dailyFocusGoalMin]) {
         if (!Number.isFinite(n) || n <= 0) throw new Error('Invalid settings range')
       }
     }

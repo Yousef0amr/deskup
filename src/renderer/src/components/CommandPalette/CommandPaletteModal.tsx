@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, X, Command, Sparkles } from 'lucide-react'
-import type { Profile, NoteItem, ClipItem, FocusState } from '../../../../shared/types'
+import type { Profile, NoteItem, ClipItem, FocusState, AppTab } from '../../../../shared/types'
 import { buildCommandList } from '../../utils/commandPaletteUtils'
 import CommandPaletteItem from './CommandPaletteItem'
 
 interface CommandPaletteModalProps {
   isOpen: boolean
   onClose: () => void
-  onNavigate: (tab: 'dashboard' | 'profiles' | 'notes' | 'clipboard' | 'settings') => void
+  onNavigate: (tab: AppTab) => void
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void
 }
 
@@ -131,7 +131,7 @@ export default function CommandPaletteModal({
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
 
-      <div className="relative w-full max-w-xl bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[75vh] z-10 animate-scale-up">
+      <div className="relative w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[75vh] z-10 animate-scale-up">
         {/* Search Input Bar */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border/80 bg-elevated/40">
           <Search className="w-5 h-5 text-indigo-500 shrink-0" />

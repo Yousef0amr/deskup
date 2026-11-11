@@ -103,7 +103,7 @@ export default function WorkspaceTemplates({
         {WORKSPACE_TEMPLATES.map((tmpl) => (
           <div
             key={tmpl.name}
-            className="group p-4 rounded-2xl bg-surface/70 border border-border/80 hover:border-indigo-500/50 hover:bg-elevated/80 transition-all flex flex-col justify-between shadow-sm relative overflow-hidden"
+            className="group p-4 rounded-xl bg-surface/70 border border-border/80 hover:border-indigo-500/50 hover:bg-elevated/80 transition-all flex flex-col justify-between shadow-sm relative overflow-hidden"
           >
             <div
               className="absolute top-0 left-0 right-0 h-1"

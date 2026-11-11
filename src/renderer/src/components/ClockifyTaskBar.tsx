@@ -1,5 +1,7 @@
 import React from 'react'
 import { CLOCKIFY_CATEGORIES, getCategoryStyle } from '../utils/focusUtils'
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 
 interface ClockifyTaskBarProps {
   taskName: string
@@ -29,32 +31,30 @@ export default function ClockifyTaskBar({
           placeholder="What are you working on? (Clockify style)..."
           className="flex-1 bg-transparent border-none text-xs text-text placeholder-muted focus:outline-none"
         />
-        <span
+        <Badge
+          variant="outline"
           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${catStyle.bg} ${catStyle.text} ${catStyle.border} shrink-0`}
         >
           #{category}
-        </span>
+        </Badge>
       </div>
 
       {!isRunning && (
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
           {CLOCKIFY_CATEGORIES.slice(0, 4).map((c) => (
-            <button
+            <Button
               key={c.id}
               type="button"
+              variant={category === c.name ? 'default' : 'secondary'}
+              size="sm"
               onClick={() => onCategoryChange(c.name)}
-              className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors shrink-0 ${
-                category === c.name
-                  ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
-                  : 'bg-surface/80 text-muted border-border/60 hover:bg-elevated'
-              }`}
+              className="h-6 px-2 text-[10px] rounded-lg shrink-0"
             >
               #{c.name}
-            </button>
+            </Button>
           ))}
         </div>
       )}
     </div>
   )
 }
-

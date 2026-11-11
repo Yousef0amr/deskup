@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Search, Pin, X, CornerDownLeft } from 'lucide-react'
+import { clipImageUrl, copyClip } from '../utils/clipboardUtils'
 import type { ClipItem } from '../../../shared/types'
 
 export default function ClipboardPopup(): React.JSX.Element {
@@ -43,7 +44,7 @@ export default function ClipboardPopup(): React.JSX.Element {
   }, [search])
 
   const handleSelect = async (item: ClipItem) => {
-    await window.deskup.clipboard.copy(item.text)
+    await copyClip(item)
     await window.deskup.clipboard.closePopup()
   }
 
@@ -80,9 +81,9 @@ export default function ClipboardPopup(): React.JSX.Element {
   }, [selectedIndex])
 
   return (
-    <div className="h-screen w-screen bg-background text-text flex flex-col overflow-hidden border border-border rounded-2xl select-none shadow-2xl">
+    <div className="h-screen w-screen bg-background text-text flex flex-col overflow-hidden border border-border rounded-xl select-none shadow-2xl">
       {/* Title & Search bar */}
-      <div className="p-3 border-b border-border/80 bg-surface/80 backdrop-blur flex items-center gap-2">
+      <div className="p-3 border-b border-border/80 bg-surface/80 flex items-center gap-2">
         <Search className="w-4 h-4 text-muted shrink-0" />
         <input
           ref={inputRef}
@@ -126,12 +127,14 @@ export default function ClipboardPopup(): React.JSX.Element {
                       <Pin className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400 fill-indigo-400 shrink-0" />
                     )}
                     <span className="text-[10px] text-muted font-mono">
-                      #{idx + 1} • {item.text.length} chars
+                      #{idx + 1} • {item.image ? `${item.image.width}×${item.image.height}` : `${item.text.length} chars`}
                     </span>
                   </div>
-                  <div className="font-mono text-xs line-clamp-2 leading-relaxed text-text">
-                    {item.text}
-                  </div>
+                  {item.image ? (
+                    <img src={clipImageUrl(item.id)} alt={item.text} draggable={false} className="max-h-20 max-w-full rounded border border-border object-contain" />
+                  ) : (
+                    <div className="font-mono text-xs line-clamp-2 leading-relaxed text-text">{item.text}</div>
+                  )}
                 </div>
 
                 {isSelected && (

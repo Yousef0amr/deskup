@@ -23,7 +23,7 @@ export default function ProductivityAnalyticsModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full max-w-lg bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10 animate-scale-up">
+      <div className="relative w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col z-10 animate-scale-up">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border/80 bg-elevated/40">
           <div className="flex items-center gap-2.5">
@@ -90,7 +90,7 @@ export default function ProductivityAnalyticsModal({
                 </div>
                 <div className="w-full max-w-[28px] bg-elevated h-full rounded-t-lg overflow-hidden flex items-end">
                   <div
-                    className="w-full bg-gradient-to-t from-indigo-600 to-cyan-400 rounded-t-lg transition-all duration-500 shadow-sm shadow-indigo-500/20 group-hover:brightness-110"
+                    className="w-full bg-gradient-to-t from-indigo-600 to-cyan-400 rounded-t-lg transition-all duration-500 group-hover:brightness-110"
                     style={{ height: `${Math.max(6, ds.percent)}%` }}
                   />
                 </div>

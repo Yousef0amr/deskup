@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Deskup mark: a desk surface with two rising chevrons ("desk" + "up", workspaces stacking up). -->
+  <rect width="512" height="512" rx="116" fill="#3753df"/>
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="44">
+    <polyline points="160,300 256,212 352,300" opacity="0.55"/>
+    <polyline points="160,212 256,124 352,212"/>
+  </g>
+  <rect x="128" y="356" width="256" height="40" rx="20" fill="#ffffff"/>
+</svg>

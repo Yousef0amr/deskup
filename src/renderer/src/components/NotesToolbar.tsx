@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { NoteItem } from '../../../shared/types'
 import { DEFAULT_FOLDERS, NOTE_COLORS, NOTE_TEMPLATES, exportNoteAsFile } from '../utils/notesUtils'
+import { Button } from './ui/button'
 
 interface NotesToolbarProps {
   note: NoteItem
@@ -41,9 +42,12 @@ export default function NotesToolbar({
       <div className="flex items-center gap-1.5 flex-wrap">
         {/* Edit / Preview Tabs */}
         <div className="flex items-center bg-elevated rounded-lg p-0.5 border border-border/60">
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => onViewModeChange('edit')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+            className={`h-7 px-2.5 text-xs font-semibold gap-1 ${
               viewMode === 'edit'
                 ? 'bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm'
                 : 'text-muted hover:text-text'
@@ -51,10 +55,13 @@ export default function NotesToolbar({
           >
             <Edit2 className="w-3 h-3" />
             <span>Edit</span>
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => onViewModeChange('preview')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+            className={`h-7 px-2.5 text-xs font-semibold gap-1 ${
               viewMode === 'preview'
                 ? 'bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm'
                 : 'text-muted hover:text-text'
@@ -62,53 +69,71 @@ export default function NotesToolbar({
           >
             <Eye className="w-3 h-3" />
             <span>Preview</span>
-          </button>
+          </Button>
         </div>
 
         {viewMode === 'edit' && (
           <div className="flex items-center gap-0.5 border-l border-border/60 pl-2">
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onInsertMarkdown('**', '**')}
-              className="p-1.5 rounded hover:bg-elevated text-muted hover:text-text"
+              className="h-7 w-7 text-muted hover:text-text"
               title="Bold (**text**)"
             >
               <Bold className="w-3.5 h-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onInsertMarkdown('*', '*')}
-              className="p-1.5 rounded hover:bg-elevated text-muted hover:text-text"
+              className="h-7 w-7 text-muted hover:text-text"
               title="Italic (*text*)"
             >
               <Italic className="w-3.5 h-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onInsertMarkdown('### ')}
-              className="p-1.5 rounded hover:bg-elevated text-muted hover:text-text"
+              className="h-7 w-7 text-muted hover:text-text"
               title="Heading"
             >
               <Heading className="w-3.5 h-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onInsertMarkdown('- [ ] ')}
-              className="p-1.5 rounded hover:bg-elevated text-muted hover:text-text"
+              className="h-7 w-7 text-muted hover:text-text"
               title="Checklist Task"
             >
               <CheckSquare className="w-3.5 h-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onInsertMarkdown('- ')}
-              className="p-1.5 rounded hover:bg-elevated text-muted hover:text-text"
+              className="h-7 w-7 text-muted hover:text-text"
               title="Bullet List"
             >
               <List className="w-3.5 h-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onInsertMarkdown('```\n', '\n```')}
-              className="p-1.5 rounded hover:bg-elevated text-muted hover:text-text"
+              className="h-7 w-7 text-muted hover:text-text"
               title="Code Block"
             >
               <Code className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -117,14 +142,17 @@ export default function NotesToolbar({
       <div className="flex items-center gap-2">
         {/* Folder / Group Selector */}
         <div className="relative">
-          <button
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setIsFolderOpen(!isFolderOpen)}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-elevated hover:bg-hover border border-border/60 text-xs text-text font-medium transition-colors"
+            className="h-7 px-2 text-xs gap-1 font-medium"
             title="Change Note Group / Folder"
           >
             <Folder className="w-3 h-3 text-indigo-500" />
             <span>{note.folder || 'General'}</span>
-          </button>
+          </Button>
 
           {isFolderOpen && (
             <>
@@ -168,14 +196,17 @@ export default function NotesToolbar({
 
         {/* Templates Dropdown */}
         <div className="relative">
-          <button
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setIsTemplateOpen(!isTemplateOpen)}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-elevated hover:bg-hover border border-border/60 text-xs text-muted hover:text-text transition-colors"
+            className="h-7 px-2 text-xs gap-1 text-muted hover:text-text"
             title="Apply Template"
           >
             <LayoutTemplate className="w-3 h-3 text-amber-500" />
             <span className="hidden sm:inline">Templates</span>
-          </button>
+          </Button>
 
           {isTemplateOpen && (
             <>
@@ -201,15 +232,17 @@ export default function NotesToolbar({
         </div>
 
         {/* Export File Button */}
-        <button
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
           onClick={() => exportNoteAsFile(note)}
-          className="p-1.5 rounded-lg bg-elevated hover:bg-hover border border-border/60 text-muted hover:text-text transition-colors"
+          className="h-7 w-7 text-muted hover:text-text"
           title="Download as .md file"
         >
           <Download className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
     </div>
   )
 }
-

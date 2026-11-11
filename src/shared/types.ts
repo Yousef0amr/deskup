@@ -1,4 +1,5 @@
 export type ItemType = 'app' | 'folder' | 'url'
+export type AppTab = 'dashboard' | 'board' | 'whiteboard' | 'profiles' | 'notes' | 'clipboard' | 'tools' | 'settings'
 
 export interface InstalledApp {
   name: string
@@ -34,6 +35,14 @@ export interface Todo {
   order: number
   priority?: 'high' | 'medium' | 'low'
   dueDate?: string
+}
+
+export interface Habit {
+  id: string
+  name: string
+  icon: string // emoji
+  createdAt: number
+  completions: string[] // local YYYY-MM-DD date keys
 }
 
 export interface NoteItem {
@@ -72,9 +81,18 @@ export type FocusAction = 'start' | 'pause' | 'reset' | 'skip'
 
 export interface ClipItem {
   id: string
+  /** Copied text, or a short label such as "Image 1280×720" for image clips. */
   text: string
   createdAt: number
   pinned: boolean
+  /** Present for image clips; the PNG is served at deskup-media://clip/<id>. */
+  image?: { width: number; height: number }
+}
+
+export interface MusicTrack {
+  id: string
+  name: string
+  path: string
 }
 
 export interface ClipboardSettings {
@@ -82,6 +100,7 @@ export interface ClipboardSettings {
   maxItems: number
   isPaused: boolean
   hotkey: string
+  captureImages: boolean
 }
 
 export interface Settings {
@@ -90,6 +109,7 @@ export interface Settings {
   hotkey: string
   launchAtLogin: boolean
   minimizeToTray: boolean
+  dailyFocusGoalMin: number
   clipboard: ClipboardSettings
 }
 
@@ -122,6 +142,18 @@ export interface DeskupAPI {
     list(): Promise<Todo[]>
     save(todos: Todo[]): Promise<void>
   }
+  habits: {
+    list(): Promise<Habit[]>
+    save(habits: Habit[]): Promise<Habit[]>
+  }
+  whiteboards: {
+    list(): Promise<import('./whiteboard').Whiteboard[]>
+    save(boards: import('./whiteboard').Whiteboard[]): Promise<void>
+  }
+  board: {
+    get(): Promise<import('./board').BoardData>
+    save(data: import('./board').BoardData): Promise<void>
+  }
   notes: {
     get(): Promise<string>
     save(text: string): Promise<void>
@@ -134,9 +166,17 @@ export interface DeskupAPI {
   system: {
     getStats(): Promise<SystemStats>
   }
+  music: {
+    list(): Promise<MusicTrack[]>
+    add(): Promise<MusicTrack[]>
+    remove(id: string): Promise<MusicTrack[]>
+    onChanged(callback: (tracks: MusicTrack[]) => void): () => void
+  }
   clipboard: {
     list(): Promise<ClipItem[]>
     copy(text: string): Promise<void>
+    copyImage(id: string): Promise<void>
+    copyImageData(dataUrl: string): Promise<void>
     pin(id: string): Promise<void>
     delete(id: string): Promise<void>
     clear(includePinned?: boolean): Promise<void>

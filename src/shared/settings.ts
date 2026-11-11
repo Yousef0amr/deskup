@@ -9,11 +9,13 @@ export const defaultSettings: Settings = {
   hotkey: 'CommandOrControl+Shift+D',
   launchAtLogin: false,
   minimizeToTray: true,
+  dailyFocusGoalMin: 120,
   clipboard: {
     enabled: true,
     maxItems: 100,
     isPaused: false,
-    hotkey: 'CommandOrControl+Shift+V'
+    hotkey: 'CommandOrControl+Shift+V',
+    captureImages: true
   }
 }
 

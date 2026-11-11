@@ -1,5 +1,6 @@
 import React from 'react'
 import { Play, Pause, RotateCcw, SkipForward } from 'lucide-react'
+import { Button } from './ui/button'
 
 interface PomodoroControlsProps {
   isRunning: boolean
@@ -19,20 +20,24 @@ export default function PomodoroControls({
   return (
     <div>
       <div className="flex items-center justify-center gap-3 pt-2">
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onReset}
-          className="p-2.5 text-muted hover:text-text hover:bg-elevated rounded-xl transition-colors border border-transparent hover:border-border/60"
+          className="text-muted hover:text-text h-9 w-9"
           title="Reset Session"
         >
           <RotateCcw className="w-4 h-4" />
-        </button>
+        </Button>
 
-        <button
+        <Button
+          type="button"
           onClick={onTogglePlay}
-          className={`px-8 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 text-white shadow-lg transition-all active:scale-95 ${
+          className={`h-9 rounded-lg px-6 text-xs font-semibold gap-2 ${
             isRunning
-              ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30'
-              : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
+              ? 'bg-amber-600 hover:bg-amber-700'
+              : 'bg-indigo-600 hover:bg-indigo-700'
           }`}
         >
           {isRunning ? (
@@ -43,24 +48,26 @@ export default function PomodoroControls({
           ) : (
             <>
               <Play className="w-4 h-4 fill-white" />
-              <span>Start Focus</span>
+              <span>Start</span>
             </>
           )}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onSkip}
-          className="p-2.5 text-muted hover:text-text hover:bg-elevated rounded-xl transition-colors border border-transparent hover:border-border/60"
+          className="text-muted hover:text-text h-9 w-9"
           title="Skip to next phase"
         >
           <SkipForward className="w-4 h-4" />
-        </button>
+        </Button>
       </div>
 
       <p className="text-[11px] text-muted text-center mt-2.5">
-        {sessionsCompleted} completed today · Tracks automatically in background
+        {sessionsCompleted} {sessionsCompleted === 1 ? 'session' : 'sessions'} today · keeps running in the background
       </p>
     </div>
   )
 }
-

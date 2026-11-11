@@ -6,6 +6,9 @@ import ClockifyTaskBar from './ClockifyTaskBar'
 import AmbientSoundPlayer from './AmbientSoundPlayer'
 import PomodoroControls from './PomodoroControls'
 import ProductivityAnalyticsModal from './ProductivityAnalyticsModal'
+import { Card } from './ui/card'
+import { WidgetHeader } from './ui/widget-header'
+import { Button } from './ui/button'
 
 interface PomodoroTimerProps {
   workMinutes?: number
@@ -100,50 +103,24 @@ export default function PomodoroTimer({
   const progressPercent = Math.max(0, Math.min(100, ((totalTime - timeLeft) / totalTime) * 100))
 
   return (
-    <div className="bg-surface/60 border border-border rounded-2xl p-5 shadow-lg flex flex-col justify-between h-full min-h-[320px]">
-      {/* Top Header */}
+    <Card className="flex h-full flex-col p-4">
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            {mode === 'work' ? (
-              <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                <Flame className="w-5 h-5" />
-              </div>
-            ) : (
-              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                <Coffee className="w-5 h-5" />
-              </div>
-            )}
-            <div>
-              <h3 className="font-semibold text-text text-base leading-tight">
-                {mode === 'work' ? 'Focus Session' : 'Rest Break'}
-              </h3>
-              <p className="text-[11px] text-muted">
-                {mode === 'work' ? `${workMinutes}m target` : `${breakMinutes}m pause`}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setIsAnalyticsOpen(true)}
-              className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-full border border-amber-500/30 flex items-center gap-1 transition-colors"
-              title="View Weekly Focus Analytics & Streaks"
-            >
-              <BarChart2 className="w-3.5 h-3.5" />
-              <span>Streaks</span>
-            </button>
-
-            <button
-              onClick={() => setIsHistoryOpen(true)}
-              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30 flex items-center gap-1.5 transition-colors"
-              title="Open Clockify Focus History"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>History ({history.length})</span>
-            </button>
-          </div>
-        </div>
+        <WidgetHeader
+          icon={mode === 'work' ? Flame : Coffee}
+          title={mode === 'work' ? 'Focus' : 'Break'}
+          subtitle={mode === 'work' ? `${workMinutes} min session` : `${breakMinutes} min break`}
+          actions={
+            <>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsAnalyticsOpen(true)} title="Weekly analytics & streaks" aria-label="Weekly analytics">
+                <BarChart2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="text-muted" onClick={() => setIsHistoryOpen(true)} title="Focus history">
+                <Clock className="h-3.5 w-3.5" />
+                <span className="tabular-nums">{history.length}</span>
+              </Button>
+            </>
+          }
+        />
 
         {/* Clockify Task & Category Selector */}
         {mode === 'work' && (
@@ -164,26 +141,22 @@ export default function PomodoroTimer({
       </div>
 
       {/* Main Timer Display */}
-      <div className="flex flex-col items-center justify-center my-auto py-2">
-        <div className="text-6xl font-mono font-bold tracking-tight text-text mb-2.5 select-none">
+      <div className="flex flex-col items-center justify-center py-5">
+        <div className={`mb-3 select-none font-mono text-[56px] font-medium leading-none tracking-tight tabular-nums ${isRunning ? 'text-text' : 'text-text/80'}`}>
           {formattedTime}
         </div>
 
         {/* Progress Bar & Subtext */}
         <div className="w-full space-y-1.5">
-          <div className="w-full bg-elevated h-2.5 rounded-full overflow-hidden p-0.5 border border-border/40">
+          <div className="h-1 w-full overflow-hidden rounded-full bg-elevated">
             <div
-              className={`h-full transition-all duration-300 rounded-full ${
-                mode === 'work'
-                  ? 'bg-gradient-to-r from-indigo-500 to-cyan-400 shadow-sm shadow-indigo-500/50'
-                  : 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50'
-              }`}
+              className={`h-full rounded-full transition-[width] duration-300 ${mode === 'work' ? 'bg-indigo-500' : 'bg-emerald-500'}`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <div className="flex justify-between items-center text-[10px] text-muted px-0.5 font-medium">
-            <span>{isRunning ? `Focusing on "${taskName}"` : 'Ready to focus'}</span>
-            <span>{Math.round(progressPercent)}% elapsed</span>
+          <div className="flex justify-between items-center gap-2 text-[11px] text-muted">
+            <span className="truncate">{isRunning ? `On: ${taskName}` : mode === 'work' ? 'Ready when you are' : 'Take a breather'}</span>
+            <span className="tabular-nums">{Math.round(progressPercent)}%</span>
           </div>
         </div>
       </div>
@@ -218,6 +191,6 @@ export default function PomodoroTimer({
         onClose={() => setIsAnalyticsOpen(false)}
         entries={history}
       />
-    </div>
+    </Card>
   )
 }

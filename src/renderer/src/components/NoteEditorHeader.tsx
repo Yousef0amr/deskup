@@ -2,6 +2,8 @@ import React from 'react'
 import { Check, Copy, Pin, Trash2 } from 'lucide-react'
 import type { NoteItem } from '../../../shared/types'
 import { NOTE_COLORS } from '../utils/notesUtils'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 
 interface NoteEditorHeaderProps {
   note: NoteItem
@@ -41,47 +43,56 @@ export default function NoteEditorHeader({
 
       <div className="flex items-center gap-1.5 shrink-0">
         {saveStatus === 'saving' && (
-          <span className="text-amber-600 dark:text-amber-400 text-xs font-medium animate-pulse">
+          <Badge variant="warning" className="gap-1 animate-pulse text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
             Saving...
-          </span>
+          </Badge>
         )}
         {saveStatus === 'saved' && (
-          <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center gap-1">
+          <Badge variant="success" className="gap-1 text-xs">
             <Check className="w-3 h-3" /> Saved
-          </span>
+          </Badge>
         )}
 
         <div className="h-4 w-px bg-border/60 mx-1" />
 
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onCopyContent}
-          className="p-2 text-muted hover:text-text hover:bg-elevated rounded-xl transition-colors"
+          className="text-muted hover:text-text h-8 w-8"
           title="Copy note content"
         >
           {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onTogglePin}
-          className={`p-2 rounded-xl transition-colors ${
-            note.pinned ? 'text-amber-500 bg-amber-500/10' : 'text-muted hover:text-text hover:bg-elevated'
+          className={`h-8 w-8 ${
+            note.pinned ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'text-muted hover:text-text'
           }`}
           title={note.pinned ? 'Unpin note' : 'Pin note to top'}
         >
           <Pin className={`w-4 h-4 ${note.pinned ? 'fill-amber-500' : ''}`} />
-        </button>
+        </Button>
 
         {notesCount > 1 && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={onDeleteNote}
-            className="p-2 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
+            className="text-muted hover:text-rose-500 hover:bg-rose-500/10 h-8 w-8"
             title="Delete note"
           >
             <Trash2 className="w-4 h-4" />
-          </button>
+          </Button>
         )}
       </div>
     </div>
   )
 }
-

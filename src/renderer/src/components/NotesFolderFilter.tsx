@@ -2,6 +2,7 @@ import React from 'react'
 import { Folder, Pin, Layers } from 'lucide-react'
 import type { NoteItem } from '../../../shared/types'
 import { DEFAULT_FOLDERS } from '../utils/notesUtils'
+import { Button } from './ui/button'
 
 interface NotesFolderFilterProps {
   notes: NoteItem[]
@@ -14,7 +15,6 @@ export default function NotesFolderFilter({
   activeFolder,
   onSelectFolder
 }: NotesFolderFilterProps): React.JSX.Element {
-  // Extract all existing unique folders from notes
   const userFolders = Array.from(
     new Set(notes.map((n) => n.folder || 'General').filter(Boolean))
   )
@@ -27,7 +27,7 @@ export default function NotesFolderFilter({
   }
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+    <div className="flex flex-wrap items-center gap-1">
       {allFolders.map((folder) => {
         const count = getCount(folder)
         if (folder !== 'All' && folder !== 'Pinned' && count === 0 && !DEFAULT_FOLDERS.slice(0, 3).includes(folder)) {
@@ -36,14 +36,13 @@ export default function NotesFolderFilter({
         const isSelected = activeFolder === folder
 
         return (
-          <button
+          <Button
             key={folder}
+            type="button"
+            variant={isSelected ? 'default' : 'secondary'}
+            size="sm"
             onClick={() => onSelectFolder(folder)}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
-              isSelected
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-elevated/70 text-muted hover:text-text hover:bg-hover border border-border/50'
-            }`}
+            className="h-7 px-2.5 text-xs gap-1 whitespace-nowrap shrink-0"
           >
             {folder === 'All' ? (
               <Layers className="w-3 h-3" />
@@ -60,10 +59,9 @@ export default function NotesFolderFilter({
             >
               {count}
             </span>
-          </button>
+          </Button>
         )
       })}
     </div>
   )
 }
-

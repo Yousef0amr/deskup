@@ -1,4 +1,17 @@
-export type ClipCategory = 'all' | 'pinned' | 'links' | 'code' | 'text'
+import type { ClipItem } from '../../../shared/types'
+
+export type ClipCategory = 'all' | 'pinned' | 'links' | 'code' | 'text' | 'images'
+
+/** Saved image clips are served by the main process through a private scheme. */
+export function clipImageUrl(id: string): string {
+  return `deskup-media://clip/${encodeURIComponent(id)}`
+}
+
+/** Put a clip back on the system clipboard (image clips copy the picture, not the label). */
+export function copyClip(clip: ClipItem | undefined, fallbackText = ''): Promise<void> {
+  if (clip?.image) return window.deskup.clipboard.copyImage(clip.id)
+  return window.deskup.clipboard.copy(clip?.text ?? fallbackText)
+}
 
 export function formatTimeAgo(timestamp: number): string {
   const diffSec = Math.floor((Date.now() - timestamp) / 1000)
