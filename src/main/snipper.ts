@@ -27,16 +27,18 @@ export async function startSnipping(): Promise<void> {
   }
 
   const cursor = screen.getCursorScreenPoint()
+  const allDisplays = screen.getAllDisplays()
   const display = screen.getDisplayNearestPoint(cursor)
-  const physW = Math.max(1, Math.round(display.size.width * display.scaleFactor))
-  const physH = Math.max(1, Math.round(display.size.height * display.scaleFactor))
+  const displayIndex = Math.max(0, allDisplays.findIndex((d) => d.id === display.id))
+  const maxW = Math.max(1, ...allDisplays.map((d) => Math.round(d.size.width * d.scaleFactor)))
+  const maxH = Math.max(1, ...allDisplays.map((d) => Math.round(d.size.height * d.scaleFactor)))
 
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: { width: physW, height: physH }
+    thumbnailSize: { width: maxW, height: maxH }
   })
 
-  const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
+  const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[displayIndex] ?? sources[0]
   if (!source || source.thumbnail.isEmpty()) {
     throw new Error('Could not capture screen')
   }
@@ -57,6 +59,7 @@ export async function startSnipping(): Promise<void> {
     resizable: false,
     movable: false,
     fullscreenable: false,
+    enableLargerThanScreen: true,
     skipTaskbar: true,
     alwaysOnTop: true,
     backgroundColor: '#000000',
@@ -70,9 +73,11 @@ export async function startSnipping(): Promise<void> {
     }
   })
 
+  snipWindow.setBounds(display.bounds)
   snipWindow.setAlwaysOnTop(true, 'screen-saver')
   snipWindow.once('ready-to-show', () => {
     if (!snipWindow || snipWindow.isDestroyed()) return
+    snipWindow.setBounds(display.bounds)
     snipWindow.show()
     snipWindow.focus()
   })

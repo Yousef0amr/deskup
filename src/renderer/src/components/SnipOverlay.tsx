@@ -131,8 +131,8 @@ export default function SnipOverlay(): React.JSX.Element {
     img.src = capture.dataUrl
     await img.decode()
 
-    const scaleX = img.naturalWidth / capture.width
-    const scaleY = img.naturalHeight / capture.height
+    const scaleX = img.naturalWidth / window.innerWidth
+    const scaleY = img.naturalHeight / window.innerHeight
 
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(selection.w * scaleX))
@@ -198,6 +198,9 @@ export default function SnipOverlay(): React.JSX.Element {
     return <div className="h-screen w-screen bg-black/80" />
   }
 
+  const viewW = window.innerWidth || capture.width
+  const viewH = window.innerHeight || capture.height
+
   const onCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || textInput) return
     const x = e.clientX
@@ -243,13 +246,13 @@ export default function SnipOverlay(): React.JSX.Element {
     const y = e.clientY
 
     if (d.mode === 'create') {
-      setSelection(clampRect(normalizeRect(d.sx, d.sy, x, y), capture.width, capture.height))
+      setSelection(clampRect(normalizeRect(d.sx, d.sy, x, y), viewW, viewH))
     } else if (d.mode === 'move') {
       const dx = x - d.sx
       const dy = y - d.sy
       setSelection({
-        x: Math.max(0, Math.min(capture.width - d.start.w, d.start.x + dx)),
-        y: Math.max(0, Math.min(capture.height - d.start.h, d.start.y + dy)),
+        x: Math.max(0, Math.min(viewW - d.start.w, d.start.x + dx)),
+        y: Math.max(0, Math.min(viewH - d.start.h, d.start.y + dy)),
         w: d.start.w,
         h: d.start.h
       })
@@ -269,7 +272,7 @@ export default function SnipOverlay(): React.JSX.Element {
         ry = d.start.y + (d.start.h - nextH)
         rh = nextH
       }
-      setSelection(clampRect({ x: rx, y: ry, w: rw, h: rh }, capture.width, capture.height))
+      setSelection(clampRect({ x: rx, y: ry, w: rw, h: rh }, viewW, viewH))
     } else if (d.mode === 'draw') {
       if (d.item.kind === 'pen' || d.item.kind === 'highlighter') {
         const next: Annotation = { ...d.item, points: [...d.item.points, [x, y]] }
@@ -338,10 +341,10 @@ export default function SnipOverlay(): React.JSX.Element {
   }
 
   // Toolbar positions kept inside screen bounds
-  const sideBarLeft = selection ? (selection.x + selection.w + 46 < capture.width ? selection.x + selection.w + 8 : Math.max(8, selection.x - 44)) : 0
-  const sideBarTop = selection ? Math.min(capture.height - 270, Math.max(8, selection.y)) : 0
-  const bottomBarLeft = selection ? Math.max(8, Math.min(capture.width - 140, selection.x + selection.w - 118)) : 0
-  const bottomBarTop = selection ? (selection.y + selection.h + 44 < capture.height ? selection.y + selection.h + 8 : Math.max(8, selection.y - 42)) : 0
+  const sideBarLeft = selection ? (selection.x + selection.w + 46 < viewW ? selection.x + selection.w + 8 : Math.max(8, selection.x - 44)) : 0
+  const sideBarTop = selection ? Math.min(viewH - 270, Math.max(8, selection.y)) : 0
+  const bottomBarLeft = selection ? Math.max(8, Math.min(viewW - 140, selection.x + selection.w - 118)) : 0
+  const bottomBarTop = selection ? (selection.y + selection.h + 44 < viewH ? selection.y + selection.h + 8 : Math.max(8, selection.y - 42)) : 0
 
   const HANDLES: { h: Handle; cls: string; cursor: string }[] = [
     { h: 'nw', cls: '-left-1 -top-1', cursor: 'nwse-resize' },
