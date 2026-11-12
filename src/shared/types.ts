@@ -201,6 +201,12 @@ export interface DeskupAPI {
     exportAll(): Promise<boolean>
     importAll(): Promise<boolean>
   }
+  snip: {
+    start(): Promise<void>
+    getCapture(): Promise<{ dataUrl: string; width: number; height: number } | null>
+    saveImage(dataUrl: string): Promise<boolean>
+    close(): Promise<void>
+  }
 }
 
 declare global {

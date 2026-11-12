@@ -1,6 +1,7 @@
 import { globalShortcut, BrowserWindow } from 'electron'
 import { store, defaultSettings } from './store'
 import { toggleClipboardPopup } from './clipboardPopup'
+import { startSnipping } from './snipper'
 
 let currentMainHotkey: string | null = null
 let currentClipboardHotkey: string | null = null
@@ -68,6 +69,15 @@ export function registerGlobalShortcuts(getMainWindow: () => BrowserWindow | nul
     } catch (err) {
       console.error(`Error registering clipboard hotkey ${clipboardHotkey}:`, err)
     }
+  }
+
+  // 3. Snipping tool shortcut
+  try {
+    globalShortcut.register('CommandOrControl+Shift+S', () => {
+      void startSnipping()
+    })
+  } catch (err) {
+    console.error('Error registering snipping hotkey:', err)
   }
 }
 

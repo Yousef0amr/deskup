@@ -63,7 +63,19 @@ export interface Bounds {
   h: number
 }
 
-export const WB_COLORS = ['#18181b', '#3753df', '#e11d48', '#059669', '#d97706', '#7c3aed', '#64748b']
+export const WB_COLORS = [
+  '#18181b',
+  '#3753df',
+  '#0891b2',
+  '#059669',
+  '#65a30d',
+  '#d97706',
+  '#e11d48',
+  '#db2777',
+  '#7c3aed',
+  '#64748b',
+  '#ffffff'
+]
 export const STICKY_COLORS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa']
 const LIMITS = { boards: 50, elements: 5000, points: 4000, text: 5000, coord: 1e7 }
 

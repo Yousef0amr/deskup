@@ -28,6 +28,7 @@ const ClipboardPage = lazy(() => import('./pages/ClipboardPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ToolsPage = lazy(() => import('./pages/ToolsPage'))
 const ClipboardPopup = lazy(() => import('./components/ClipboardPopup'))
+const SnipOverlay = lazy(() => import('./components/SnipOverlay'))
 const CommandPaletteModal = lazy(() => import('./components/CommandPalette/CommandPaletteModal'))
 
 const loadingView = <div role="status" className="p-4 text-sm text-muted">Loading…</div>
@@ -61,6 +62,7 @@ function prettyHotkey(hotkey: string): string {
 
 export default function App(): React.JSX.Element {
   const isPopup = window.location.hash === '#clipboard-popup'
+  const isSnipOverlay = window.location.hash === '#snip-overlay'
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard')
   const [hotkeys, setHotkeys] = useState({ main: '', clipboard: '' })
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
@@ -131,6 +133,14 @@ export default function App(): React.JSX.Element {
       unsubscribeImport()
     }
   }, [applyTheme, toggleSidebar])
+
+  if (isSnipOverlay) {
+    return (
+      <Suspense fallback={<div className="h-screen w-screen bg-black/80" />}>
+        <SnipOverlay />
+      </Suspense>
+    )
+  }
 
   if (isPopup) {
     return (

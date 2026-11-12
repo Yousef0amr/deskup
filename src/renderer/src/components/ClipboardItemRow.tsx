@@ -8,7 +8,10 @@ import { Button } from './ui/button'
 interface ClipboardItemRowProps {
   clip: ClipItem
   isCopied: boolean
+  isSelected: boolean
+  selectionMode: boolean
   onCopy: (id: string, text: string) => void
+  onToggleSelect: (id: string, shiftKey: boolean) => void
   onTogglePin: (e: React.MouseEvent, id: string) => void
   onDelete: (e: React.MouseEvent, id: string) => void
 }
@@ -16,22 +19,55 @@ interface ClipboardItemRowProps {
 export default function ClipboardItemRow({
   clip,
   isCopied,
+  isSelected,
+  selectionMode,
   onCopy,
+  onToggleSelect,
   onTogglePin,
   onDelete
 }: ClipboardItemRowProps): React.JSX.Element {
   const clipType = clip.image ? 'image' : detectClipType(clip.text)
   const isMultiLine = clip.text.includes('\n')
 
+  const handleRowClick = (e: React.MouseEvent) => {
+    if (selectionMode || e.ctrlKey || e.metaKey || e.shiftKey) {
+      onToggleSelect(clip.id, e.shiftKey)
+      return
+    }
+    onCopy(clip.id, clip.text)
+  }
+
   return (
     <div
-      onClick={() => onCopy(clip.id, clip.text)}
+      onClick={handleRowClick}
       className={`group p-3 px-4 rounded-xl border transition-all flex items-start justify-between gap-3 cursor-pointer ${
-        clip.pinned
-          ? 'bg-surface border-amber-500/40 hover:border-amber-500/70 shadow-sm'
-          : 'bg-surface/70 border-border/70 hover:bg-elevated hover:border-indigo-500/40'
+        isSelected
+          ? 'bg-indigo-500/10 border-indigo-500/60 shadow-sm'
+          : clip.pinned
+            ? 'bg-surface border-amber-500/40 hover:border-amber-500/70 shadow-sm'
+            : 'bg-surface/70 border-border/70 hover:bg-elevated hover:border-indigo-500/40'
       }`}
     >
+      {/* Selection Checkbox */}
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={isSelected}
+        aria-label={isSelected ? 'Deselect item' : 'Select item'}
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggleSelect(clip.id, e.shiftKey)
+        }}
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all ${
+          isSelected
+            ? 'border-indigo-500 bg-indigo-600 text-white opacity-100'
+            : selectionMode
+              ? 'border-border bg-surface text-transparent opacity-100 hover:border-indigo-400'
+              : 'border-border bg-surface text-transparent opacity-0 group-hover:opacity-100 hover:border-indigo-400'
+        }`}
+      >
+        <Check className="h-3 w-3 stroke-[3]" />
+      </button>
       {/* Content Area */}
       <div className="flex-1 min-w-0 pr-2">
         <div className="flex items-center gap-2 mb-1">

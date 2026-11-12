@@ -7,6 +7,7 @@ import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { startClipboardWatcher, stopClipboardWatcher } from './clipboard'
 import { createClipboardPopupWindow } from './clipboardPopup'
 import { registerMediaProtocol, registerMusicIpc } from './media'
+import { registerSnipIpc } from './snipper'
 import { applyLoginItem } from './loginItem'
 import { BrowserWindow } from 'electron'
 import { app } from 'electron/main'
@@ -94,6 +95,7 @@ app.whenReady().then(() => {
   }
 
   registerMediaProtocol()
+  registerSnipIpc()
   // Keep the OS startup entry in sync with the setting (also repairs stale entries).
   applyLoginItem(store.get('settings', defaultSettings).launchAtLogin)
   registerMusicIpc(() => mainWindow)

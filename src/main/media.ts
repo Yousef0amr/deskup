@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, net, protocol, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { existsSync } from 'fs'
+import { existsSync, promises as fsp } from 'fs'
 import { basename, extname, join } from 'path'
 import { pathToFileURL } from 'url'
 import { store } from './store'
@@ -17,7 +17,7 @@ const MAX_TRACKS = 500
 
 // Must run before the app is ready.
 protocol.registerSchemesAsPrivileged([
-  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }
+  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: true } }
 ])
 
 export function clipImagesDir(): string {
@@ -41,8 +41,13 @@ function broadcastTracks(tracks: MusicTrack[]): void {
 export function registerMediaProtocol(): void {
   protocol.handle(MEDIA_SCHEME, async (request) => {
     const url = new URL(request.url)
-    const filePath = resolveMediaPath(url.hostname, decodeURIComponent(url.pathname.replace(/^\//, '')))
+    const id = decodeURIComponent(url.pathname.replace(/^\//, ''))
+    const filePath = resolveMediaPath(url.hostname, id)
     if (!filePath || !existsSync(filePath)) return new Response('Not found', { status: 404 })
+    if (url.hostname === 'clip') {
+      const data = await fsp.readFile(filePath)
+      return new Response(data, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' } })
+    }
     // Forward Range headers so audio can seek and stream large files.
     return net.fetch(pathToFileURL(filePath).toString(), { headers: request.headers })
   })

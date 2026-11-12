@@ -7,6 +7,11 @@ import {
   Play,
   Globe,
   Code,
+  Copy,
+  Check,
+  Trash2,
+  CheckSquare,
+  Scissors,
   X, Image as ImageIcon } from 'lucide-react'
 import type { ClipItem } from '../../../shared/types'
 import { detectClipType, ClipCategory, copyClip } from '../utils/clipboardUtils'
@@ -14,14 +19,19 @@ import ClipboardItemRow from '../components/ClipboardItemRow'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
+import { useToast } from '../components/ui/toast'
 
 export default function ClipboardPage(): React.JSX.Element {
   const [clips, setClips] = useState<ClipItem[]>([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState<ClipCategory>('all')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
+  const [copiedBulk, setCopiedBulk] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const toast = useToast()
 
   useEffect(() => {
     async function loadData() {
@@ -82,6 +92,99 @@ export default function ClipboardPage(): React.JSX.Element {
     return result.filter((c) => c.text.toLowerCase().includes(q))
   }, [clips, category, search])
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev
+      const existing = new Set(clips.map((c) => c.id))
+      const next = new Set([...prev].filter((id) => existing.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [clips])
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedIds(new Set())
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedIds.size])
+
+  const handleToggleSelect = (id: string, shiftKey: boolean) => {
+    if (shiftKey && lastSelectedId) {
+      const ids = filteredClips.map((c) => c.id)
+      const start = ids.indexOf(lastSelectedId)
+      const end = ids.indexOf(id)
+      if (start !== -1 && end !== -1) {
+        const [from, to] = start <= end ? [start, end] : [end, start]
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          for (let i = from; i <= to; i++) next.add(ids[i])
+          return next
+        })
+        setLastSelectedId(id)
+        return
+      }
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setLastSelectedId(id)
+  }
+
+  const handleSelectAllFiltered = () => {
+    if (filteredClips.length === 0) return
+    const allSelected = filteredClips.every((c) => selectedIds.has(c.id))
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredClips.map((c) => c.id)))
+    }
+  }
+
+  const handleCopySelected = async () => {
+    const selected = filteredClips.filter((c) => selectedIds.has(c.id))
+    const fallback = selected.length ? selected : clips.filter((c) => selectedIds.has(c.id))
+    if (fallback.length === 0) return
+
+    const textItems = fallback.filter((c) => !c.image)
+    const imageItems = fallback.filter((c) => !!c.image)
+
+    if (textItems.length === 0 && imageItems.length === 1) {
+      await copyClip(imageItems[0])
+      setCopiedBulk(true)
+      toast('Copied image to clipboard')
+      setTimeout(() => setCopiedBulk(false), 1800)
+      return
+    }
+
+    if (textItems.length === 0) {
+      toast('Only one image can be copied to the system clipboard at a time', 'info')
+      return
+    }
+
+    const sep = textItems.some((c) => c.text.includes('\n')) ? '\n\n' : '\n'
+    await window.deskup.clipboard.copy(textItems.map((c) => c.text).join(sep))
+    setCopiedBulk(true)
+    toast(
+      imageItems.length > 0
+        ? `Copied ${textItems.length} text item${textItems.length === 1 ? '' : 's'} (skipped ${imageItems.length} image${imageItems.length === 1 ? '' : 's'})`
+        : `Copied ${textItems.length} item${textItems.length === 1 ? '' : 's'} to clipboard`
+    )
+    setTimeout(() => setCopiedBulk(false), 1800)
+  }
+
+  const handleDeleteSelected = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    await Promise.all(ids.map((id) => window.deskup.clipboard.delete(id)))
+    setSelectedIds(new Set())
+    toast(`Deleted ${ids.length} item${ids.length === 1 ? '' : 's'}`)
+  }
+
   const pinnedCount = useMemo(() => clips.filter((c) => c.pinned).length, [clips])
   const linksCount = useMemo(() => clips.filter((c) => detectClipType(c.text) === 'url').length, [clips])
   const codeCount = useMemo(() => clips.filter((c) => detectClipType(c.text) === 'code').length, [clips])
@@ -111,6 +214,17 @@ export default function ClipboardPage(): React.JSX.Element {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void window.deskup.snip.start()}
+            className="gap-1.5"
+            title="Capture screen region (Ctrl+Shift+S)"
+          >
+            <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Snip</span>
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -217,6 +331,54 @@ export default function ClipboardPage(): React.JSX.Element {
             Press <kbd className="bg-elevated px-1.5 py-0.5 rounded border border-border/60">Ctrl+Shift+V</kbd> for popup
           </span>
         </div>
+
+        {/* Multi-select action bar */}
+        {selectedIds.size > 0 && (
+          <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-500/40 bg-surface/95 px-3.5 py-2 shadow-lg backdrop-blur-sm animate-fade-in">
+            <div className="flex items-center gap-2.5 text-xs">
+              <span className="font-semibold text-text">{selectedIds.size} selected</span>
+              <button
+                type="button"
+                onClick={handleSelectAllFiltered}
+                className="flex items-center gap-1 text-muted hover:text-text"
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                {filteredClips.length > 0 && filteredClips.every((c) => selectedIds.has(c.id)) ? 'Deselect all' : 'Select all'}
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleCopySelected()}
+                className="h-7 gap-1.5 bg-indigo-600 px-2.5 text-xs text-white hover:bg-indigo-500"
+              >
+                {copiedBulk ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                <span>{copiedBulk ? 'Copied!' : 'Copy selected'}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleDeleteSelected()}
+                className="h-7 gap-1 px-2.5 text-xs hover:border-rose-500/40 hover:text-rose-500"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSelectedIds(new Set())}
+                title="Clear selection (Esc)"
+                className="h-7 w-7 text-muted hover:text-text"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Clips List */}
@@ -243,7 +405,10 @@ export default function ClipboardPage(): React.JSX.Element {
               key={clip.id}
               clip={clip}
               isCopied={copiedId === clip.id}
+              isSelected={selectedIds.has(clip.id)}
+              selectionMode={selectedIds.size > 0}
               onCopy={handleCopy}
+              onToggleSelect={handleToggleSelect}
               onTogglePin={handleTogglePin}
               onDelete={handleDelete}
             />

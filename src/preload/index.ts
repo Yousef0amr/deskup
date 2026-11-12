@@ -108,6 +108,12 @@ const api: DeskupAPI = {
     },
     exportAll: () => ipcRenderer.invoke('data:exportAll'),
     importAll: () => ipcRenderer.invoke('data:importAll')
+  },
+  snip: {
+    start: () => ipcRenderer.invoke('snip:start'),
+    getCapture: () => ipcRenderer.invoke('snip:getCapture'),
+    saveImage: (dataUrl: string) => ipcRenderer.invoke('snip:saveImage', dataUrl),
+    close: () => ipcRenderer.invoke('snip:close')
   }
 }
 

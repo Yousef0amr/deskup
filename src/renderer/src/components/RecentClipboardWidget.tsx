@@ -7,7 +7,8 @@ import {
   ExternalLink,
   Code,
   Link as LinkIcon,
-  FileText
+  FileText,
+  Image as ImageIcon
 } from 'lucide-react'
 import type { ClipItem } from '../../../shared/types'
 import { Card } from './ui/card'
@@ -47,6 +48,7 @@ export default function RecentClipboardWidget({
 }: RecentClipboardWidgetProps): React.JSX.Element {
   const [clips, setClips] = useState<ClipItem[]>([])
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -110,7 +112,19 @@ export default function RecentClipboardWidget({
                 >
                   <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
                     {clip.image ? (
-                      <img src={clipImageUrl(clip.id)} alt="" draggable={false} className="h-8 w-8 shrink-0 rounded border border-border object-cover" />
+                      brokenImages.has(clip.id) ? (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-border bg-elevated text-muted">
+                          <ImageIcon className="h-4 w-4" />
+                        </div>
+                      ) : (
+                        <img
+                          src={clipImageUrl(clip.id)}
+                          alt=""
+                          draggable={false}
+                          onError={() => setBrokenImages((prev) => new Set(prev).add(clip.id))}
+                          className="h-8 w-8 shrink-0 rounded border border-border object-cover"
+                        />
+                      )
                     ) : (
                       getClipIcon(clip.text)
                     )}

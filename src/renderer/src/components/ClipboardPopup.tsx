@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Pin, X, CornerDownLeft } from 'lucide-react'
+import { Search, Pin, X, CornerDownLeft, Image as ImageIcon } from 'lucide-react'
 import { clipImageUrl, copyClip } from '../utils/clipboardUtils'
 import type { ClipItem } from '../../../shared/types'
 
@@ -7,6 +7,7 @@ export default function ClipboardPopup(): React.JSX.Element {
   const [clips, setClips] = useState<ClipItem[]>([])
   const [search, setSearch] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -44,8 +45,13 @@ export default function ClipboardPopup(): React.JSX.Element {
   }, [search])
 
   const handleSelect = async (item: ClipItem) => {
-    await copyClip(item)
-    await window.deskup.clipboard.closePopup()
+    try {
+      await copyClip(item)
+    } catch (err) {
+      console.error('Failed to copy clip:', err)
+    } finally {
+      await window.deskup.clipboard.closePopup()
+    }
   }
 
   // Keyboard navigation
@@ -131,7 +137,20 @@ export default function ClipboardPopup(): React.JSX.Element {
                     </span>
                   </div>
                   {item.image ? (
-                    <img src={clipImageUrl(item.id)} alt={item.text} draggable={false} className="max-h-20 max-w-full rounded border border-border object-contain" />
+                    brokenImages.has(item.id) ? (
+                      <div className="flex items-center gap-1.5 text-xs text-muted py-1">
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        <span>{item.text}</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={clipImageUrl(item.id)}
+                        alt={item.text}
+                        draggable={false}
+                        onError={() => setBrokenImages((prev) => new Set(prev).add(item.id))}
+                        className="max-h-20 max-w-full rounded border border-border object-contain"
+                      />
+                    )
                   ) : (
                     <div className="font-mono text-xs line-clamp-2 leading-relaxed text-text">{item.text}</div>
                   )}

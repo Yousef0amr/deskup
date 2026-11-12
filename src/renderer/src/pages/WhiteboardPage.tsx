@@ -18,6 +18,11 @@ import {
   Maximize,
   Image as ImageIcon,
   Download,
+  Upload,
+  Code2,
+  Copy,
+  Check,
+  ChevronDown,
   Plus,
   Trash2,
   CopyPlus,
@@ -35,7 +40,19 @@ import {
   translateElement,
   unionBounds
 } from '../../../shared/whiteboard'
-import WbElementView, { FONT, INK, THEME_INK } from '../components/whiteboard/WbElementView'
+import WbElementView, { FONT, INK } from '../components/whiteboard/WbElementView'
+import {
+  buildExportCode,
+  buildSvgString,
+  DEFAULT_EXPORT_CONFIG,
+  paddedViewBox,
+  type BgShape,
+  type ExportCodeFormat,
+  type FlipMode,
+  type SvgExportConfig
+} from '../components/whiteboard/wbExport'
+import { parseSvgToElements } from '../components/whiteboard/wbImport'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { useToast } from '../components/ui/toast'
 import { cn } from '../lib/utils'
 
@@ -102,16 +119,27 @@ export default function WhiteboardPage(): React.JSX.Element {
   const [marquee, setMarquee] = useState<Bounds | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
+  const [codeModalOpen, setCodeModalOpen] = useState(false)
+  const [codeFormat, setCodeFormat] = useState<ExportCodeFormat>('svg')
+  const [exportConfig, setExportConfig] = useState<SvgExportConfig>(DEFAULT_EXPORT_CONFIG)
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importSvgText, setImportSvgText] = useState('')
+  const [ioMenuOpen, setIoMenuOpen] = useState(false)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const contentRef = useRef<SVGGElement>(null)
+  const svgFileInputRef = useRef<HTMLInputElement>(null)
+  const ioMenuRef = useRef<HTMLDivElement>(null)
   const interaction = useRef<Interaction | null>(null)
   const elementsRef = useRef<WbElement[]>([])
+  const viewRef = useRef<View>(view)
   const boardsRef = useRef<Whiteboard[] | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clipboardRef = useRef<WbElement[]>([])
   const toast = useToast()
   elementsRef.current = elements
+  viewRef.current = view
 
   const board = useMemo(() => boards?.find((b) => b.id === activeId) ?? boards?.[0], [boards, activeId])
 
@@ -569,17 +597,33 @@ export default function WhiteboardPage(): React.JSX.Element {
   }) // re-bound each render so handlers see fresh state
 
   // ---------------- export
-  const renderPng = async (): Promise<string | null> => {
+  const getExportContext = () => {
     const content = contentRef.current
     const b = unionBounds(elementsRef.current.map(elementBounds))
     if (!content || !b) {
       toast('Nothing to export yet', 'info')
       return null
     }
-    const pad = 40
-    const vb = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 }
-    const inner = content.innerHTML.split(THEME_INK).join(INK)
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" font-family='${FONT}'><rect x="${vb.x}" y="${vb.y}" width="${vb.w}" height="${vb.h}" fill="#ffffff"/>${inner}</svg>`
+    return { content, bounds: b }
+  }
+
+  const downloadBlob = (content: string, mime: string, ext: string) => {
+    if (!board) return
+    const slug = board.name.replace(/[^\w\- ]+/g, '').trim() || 'whiteboard'
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${slug}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const renderPng = async (): Promise<string | null> => {
+    const ctxData = getExportContext()
+    if (!ctxData) return null
+    const vb = paddedViewBox(ctxData.bounds)
+    const svg = buildSvgString(ctxData.content.innerHTML, ctxData.bounds, { includeBg: true })
     const img = new Image()
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
     await img.decode()
@@ -608,6 +652,118 @@ export default function WhiteboardPage(): React.JSX.Element {
     a.download = `${board.name.replace(/[^\w\- ]+/g, '').trim() || 'whiteboard'}.png`
     a.click()
   }
+
+  const exportSvg = () => {
+    const ctxData = getExportContext()
+    if (!ctxData) return
+    const svg = buildSvgString(ctxData.content.innerHTML, ctxData.bounds, { pretty: true, config: exportConfig })
+    downloadBlob(svg, 'image/svg+xml;charset=utf-8', 'svg')
+  }
+
+  const openCodeModal = () => {
+    if (!getExportContext()) return
+    setCopiedCode(false)
+    setCodeModalOpen(true)
+  }
+
+  const exportCodeText = useMemo(() => {
+    if (!codeModalOpen) return ''
+    const content = contentRef.current
+    const b = unionBounds(elements.map(elementBounds))
+    if (!content || !b) return ''
+    return buildExportCode(codeFormat, content.innerHTML, b, elements, exportConfig)
+  }, [codeModalOpen, codeFormat, elements, exportConfig])
+
+  const exportPreviewUrl = useMemo(() => {
+    if (!codeModalOpen) return ''
+    const content = contentRef.current
+    const b = unionBounds(elements.map(elementBounds))
+    if (!content || !b) return ''
+    const svg = buildSvgString(content.innerHTML, b, { config: exportConfig })
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  }, [codeModalOpen, elements, exportConfig])
+
+  const copyExportCode = async () => {
+    if (!exportCodeText) return
+    await navigator.clipboard.writeText(exportCodeText)
+    setCopiedCode(true)
+    toast(`Copied ${codeFormat.toUpperCase()} to clipboard`)
+    setTimeout(() => setCopiedCode(false), 1800)
+  }
+
+  const downloadExportCode = () => {
+    if (!exportCodeText) return
+    const ext = codeFormat === 'jsx' ? 'tsx' : codeFormat
+    const mime = codeFormat === 'svg' ? 'image/svg+xml;charset=utf-8' : 'text/plain;charset=utf-8'
+    downloadBlob(exportCodeText, mime, ext)
+  }
+
+  // ---------------- svg import
+  const insertSvgToBoard = useCallback(
+    (svgText: string): boolean => {
+      try {
+        const parsed = parseSvgToElements(svgText, newId)
+        const b = unionBounds(parsed.map(elementBounds))
+        const rect = svgRef.current?.getBoundingClientRect()
+        const v = viewRef.current
+        const centerX = rect ? (rect.width / 2 - v.x) / v.zoom : 0
+        const centerY = rect ? (rect.height / 2 - v.y) / v.zoom : 0
+        const dx = b ? centerX - (b.x + b.w / 2) : 0
+        const dy = b ? centerY - (b.y + b.h / 2) : 0
+        const placed = parsed.map((el) => translateElement(el, dx, dy))
+        commit([...elementsRef.current, ...placed])
+        setSelected(new Set(placed.map((el) => el.id)))
+        setTool('select')
+        toast(`Imported ${placed.length} element${placed.length === 1 ? '' : 's'} from SVG`)
+        return true
+      } catch (err) {
+        toast((err as Error).message || 'Could not import SVG', 'error')
+        return false
+      }
+    },
+    [commit, toast]
+  )
+
+  const handleImportSvgFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    file
+      .text()
+      .then((text) => {
+        setImportSvgText(text)
+        if (insertSvgToBoard(text)) setImportModalOpen(false)
+      })
+      .catch(() => toast('Could not read SVG file', 'error'))
+  }
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTyping(e.target) || importModalOpen) return
+      const text = e.clipboardData?.getData('text/plain')
+      if (!text || !text.includes('<svg')) return
+      e.preventDefault()
+      insertSvgToBoard(text)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [importModalOpen, insertSvgToBoard])
+
+  useEffect(() => {
+    if (!ioMenuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (ioMenuRef.current && !ioMenuRef.current.contains(e.target as Node)) setIoMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIoMenuOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [ioMenuOpen])
 
   // ---------------- board management
   const addBoard = () => {
@@ -680,13 +836,84 @@ export default function WhiteboardPage(): React.JSX.Element {
             <Trash2 className="h-4 w-4" />
           </button>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
-          <button type="button" onClick={() => void copyImage()} className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-text hover:bg-elevated">
-            <ImageIcon className="h-3.5 w-3.5" /> Copy image
+        <div ref={ioMenuRef} className="relative ml-auto">
+          <button
+            type="button"
+            onClick={() => setIoMenuOpen((o) => !o)}
+            aria-expanded={ioMenuOpen}
+            aria-haspopup="menu"
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-text hover:bg-elevated"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Import / Export
+            <ChevronDown className={cn('h-3.5 w-3.5 text-muted transition-transform', ioMenuOpen && 'rotate-180')} />
           </button>
-          <button type="button" onClick={() => void exportPng()} className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-text hover:bg-elevated">
-            <Download className="h-3.5 w-3.5" /> PNG
-          </button>
+          {ioMenuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-30 mt-1.5 w-48 rounded-xl border border-border bg-surface p-1.5 shadow-xl animate-fade-in"
+            >
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Import</div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIoMenuOpen(false)
+                  setImportSvgText('')
+                  setImportModalOpen(true)
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-elevated"
+              >
+                <Upload className="h-3.5 w-3.5 text-muted" /> Import SVG…
+              </button>
+              <div className="my-1 border-t border-border" />
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Export</div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIoMenuOpen(false)
+                  void copyImage()
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-elevated"
+              >
+                <ImageIcon className="h-3.5 w-3.5 text-muted" /> Copy image
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIoMenuOpen(false)
+                  void exportPng()
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-elevated"
+              >
+                <Download className="h-3.5 w-3.5 text-muted" /> Download PNG
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIoMenuOpen(false)
+                  exportSvg()
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-elevated"
+              >
+                <Download className="h-3.5 w-3.5 text-muted" /> Download SVG
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIoMenuOpen(false)
+                  openCodeModal()
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-elevated"
+              >
+                <Code2 className="h-3.5 w-3.5 text-muted" /> Export SVG / Code…
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -791,6 +1018,32 @@ export default function WhiteboardPage(): React.JSX.Element {
                   {STICKY_COLORS.map((c) => (
                     <button key={c} type="button" onClick={() => { setStickyColor(c); updateSelected((el) => (el.type === 'sticky' ? { ...el, color: c } : el)) }} className={cn('h-6 w-6 rounded-md border', (single?.type === 'sticky' ? single.color : stickyColor) === c ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-black/10')} style={{ background: c }} aria-label={`Note colour ${c}`} />
                   ))}
+                  <label
+                    className={cn(
+                      'relative flex h-6 w-6 cursor-pointer items-center justify-center overflow-hidden rounded-md border',
+                      !STICKY_COLORS.includes(single?.type === 'sticky' ? single.color : stickyColor)
+                        ? 'border-indigo-500 ring-2 ring-indigo-500/30'
+                        : 'border-border'
+                    )}
+                    style={{
+                      background: !STICKY_COLORS.includes(single?.type === 'sticky' ? single.color : stickyColor)
+                        ? (single?.type === 'sticky' ? single.color : stickyColor)
+                        : 'conic-gradient(from 0deg, #ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)'
+                    }}
+                    title="Custom note colour"
+                  >
+                    <input
+                      type="color"
+                      value={single?.type === 'sticky' ? single.color : stickyColor}
+                      onChange={(e) => {
+                        const c = e.target.value
+                        setStickyColor(c)
+                        updateSelected((el) => (el.type === 'sticky' ? { ...el, color: c } : el))
+                      }}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                      aria-label="Custom note colour"
+                    />
+                  </label>
                 </div>
               </div>
             ) : (
@@ -799,8 +1052,32 @@ export default function WhiteboardPage(): React.JSX.Element {
                   <div className="mb-1.5 text-[11px] font-medium text-muted">Colour</div>
                   <div className="flex flex-wrap gap-1.5">
                     {WB_COLORS.map((c) => (
-                      <button key={c} type="button" onClick={() => { setColor(c); updateSelected((el) => (el.type === 'sticky' ? el : { ...el, color: c })) }} className={cn('h-6 w-6 rounded-full border', activeColor === c ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-black/10')} style={{ background: c === INK ? 'rgb(var(--text))' : c }} aria-label={`Colour ${c}`} />
+                      <button key={c} type="button" onClick={() => { setColor(c); updateSelected((el) => (el.type === 'sticky' ? el : { ...el, color: c })) }} className={cn('h-6 w-6 rounded-full border', activeColor === c ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-black/15')} style={{ background: c === INK ? 'rgb(var(--text))' : c }} aria-label={`Colour ${c}`} />
                     ))}
+                    <label
+                      className={cn(
+                        'relative flex h-6 w-6 cursor-pointer items-center justify-center overflow-hidden rounded-full border',
+                        !WB_COLORS.includes(activeColor) ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-border'
+                      )}
+                      style={{
+                        background: !WB_COLORS.includes(activeColor)
+                          ? activeColor
+                          : 'conic-gradient(from 0deg, #ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)'
+                      }}
+                      title="Custom colour"
+                    >
+                      <input
+                        type="color"
+                        value={activeColor}
+                        onChange={(e) => {
+                          const c = e.target.value
+                          setColor(c)
+                          updateSelected((el) => (el.type === 'sticky' ? el : { ...el, color: c }))
+                        }}
+                        className="absolute inset-0 cursor-pointer opacity-0"
+                        aria-label="Custom colour"
+                      />
+                    </label>
                   </div>
                 </div>
                 {(tool !== 'text' && single?.type !== 'text') && (
@@ -869,6 +1146,301 @@ export default function WhiteboardPage(): React.JSX.Element {
           </div>
         )}
       </div>
+
+      <Dialog open={codeModalOpen} onOpenChange={setCodeModalOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Export as SVG or Code</DialogTitle>
+            <DialogDescription>Customize size, padding, stroke, color, transforms, and background, then copy or download.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-elevated/50 p-1">
+              {(['svg', 'jsx', 'json'] as const).map((fmt) => (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => {
+                    setCodeFormat(fmt)
+                    setCopiedCode(false)
+                  }}
+                  className={cn(
+                    'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                    codeFormat === fmt ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text'
+                  )}
+                >
+                  {fmt === 'svg' ? 'SVG' : fmt === 'jsx' ? 'React JSX' : 'JSON'}
+                </button>
+              ))}
+            </div>
+            {codeFormat !== 'json' && (
+              <button
+                type="button"
+                onClick={() => setExportConfig(DEFAULT_EXPORT_CONFIG)}
+                className="text-xs text-muted hover:text-text"
+              >
+                Reset config
+              </button>
+            )}
+          </div>
+
+          <div className={cn('grid gap-4', codeFormat !== 'json' ? 'md:grid-cols-[260px_1fr]' : 'grid-cols-1')}>
+            {codeFormat !== 'json' && (
+              <div className="space-y-3 rounded-lg border border-border bg-elevated/30 p-3 text-xs">
+                {/* Live preview */}
+                <div
+                  className="flex h-36 items-center justify-center overflow-hidden rounded-md border border-border p-2"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(45deg, rgb(var(--border) / 0.35) 25%, transparent 25%), linear-gradient(-45deg, rgb(var(--border) / 0.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgb(var(--border) / 0.35) 75%), linear-gradient(-45deg, transparent 75%, rgb(var(--border) / 0.35) 75%)',
+                    backgroundSize: '14px 14px',
+                    backgroundPosition: '0 0, 0 7px, 7px -7px, -7px 0'
+                  }}
+                >
+                  {exportPreviewUrl && <img src={exportPreviewUrl} alt="SVG preview" className="max-h-full max-w-full object-contain" />}
+                </div>
+
+                {/* Size */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-muted">
+                    <span>Size</span>
+                    <span className="font-mono tabular-nums text-text">{exportConfig.size > 0 ? `${exportConfig.size}px` : 'Auto'}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={512}
+                    step={8}
+                    value={exportConfig.size}
+                    onChange={(e) => setExportConfig((c) => ({ ...c, size: Number(e.target.value) }))}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+
+                {/* Padding */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-muted">
+                    <span>Padding</span>
+                    <span className="font-mono tabular-nums text-text">{exportConfig.paddingPct}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={40}
+                    step={1}
+                    value={exportConfig.paddingPct}
+                    onChange={(e) => setExportConfig((c) => ({ ...c, paddingPct: Number(e.target.value) }))}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+
+                {/* Thickness */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-muted">
+                    <span>Thickness</span>
+                    <span className="font-mono tabular-nums text-text">{exportConfig.strokeOverride > 0 ? `${exportConfig.strokeOverride}px` : 'Original'}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={12}
+                    step={0.5}
+                    value={exportConfig.strokeOverride}
+                    onChange={(e) => setExportConfig((c) => ({ ...c, strokeOverride: Number(e.target.value) }))}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+
+                {/* Line Color */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-muted">
+                    <span>Line Color</span>
+                    {exportConfig.colorOverride && (
+                      <button type="button" onClick={() => setExportConfig((c) => ({ ...c, colorOverride: '' }))} className="text-[11px] text-indigo-400 hover:underline">
+                        Original
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-surface p-1">
+                    <input
+                      type="color"
+                      value={exportConfig.colorOverride || '#18181b'}
+                      onChange={(e) => setExportConfig((c) => ({ ...c, colorOverride: e.target.value }))}
+                      className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                      aria-label="Line color"
+                    />
+                    <input
+                      type="text"
+                      value={exportConfig.colorOverride}
+                      placeholder="Original"
+                      onChange={(e) => setExportConfig((c) => ({ ...c, colorOverride: e.target.value }))}
+                      className="w-full bg-transparent font-mono text-xs text-text placeholder:text-muted/60 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Flip / Mirror */}
+                <div className="space-y-1">
+                  <span className="text-muted">Flip / Mirror</span>
+                  <div className="grid grid-cols-4 gap-1 rounded-md border border-border bg-surface p-0.5">
+                    {([
+                      ['none', 'None'],
+                      ['h', 'Flip H'],
+                      ['v', 'Flip V'],
+                      ['both', 'Both']
+                    ] as [FlipMode, string][]).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setExportConfig((c) => ({ ...c, flip: val }))}
+                        className={cn(
+                          'rounded py-1 text-[11px] font-medium transition-colors',
+                          exportConfig.flip === val ? 'bg-indigo-600 text-white' : 'text-muted hover:text-text'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rotation */}
+                <div className="space-y-1">
+                  <span className="text-muted">Rotation</span>
+                  <div className="grid grid-cols-4 gap-1 rounded-md border border-border bg-surface p-0.5">
+                    {([0, 90, 180, 270] as const).map((deg) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => setExportConfig((c) => ({ ...c, rotation: deg }))}
+                        className={cn(
+                          'rounded py-1 text-[11px] font-medium transition-colors',
+                          exportConfig.rotation === deg ? 'bg-indigo-600 text-white' : 'text-muted hover:text-text'
+                        )}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* BG Shape */}
+                <div className="space-y-1">
+                  <span className="text-muted">BG Shape</span>
+                  <div className="grid grid-cols-4 gap-1 rounded-md border border-border bg-surface p-0.5">
+                    {([
+                      ['none', 'None'],
+                      ['square', 'Square'],
+                      ['rounded', 'Round'],
+                      ['circle', 'Circle']
+                    ] as [BgShape, string][]).map(([shape, label]) => (
+                      <button
+                        key={shape}
+                        type="button"
+                        onClick={() => setExportConfig((c) => ({ ...c, bgShape: shape }))}
+                        className={cn(
+                          'rounded py-1 text-[11px] font-medium transition-colors',
+                          exportConfig.bgShape === shape ? 'bg-indigo-600 text-white' : 'text-muted hover:text-text'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* BG Color */}
+                {exportConfig.bgShape !== 'none' && (
+                  <div className="space-y-1">
+                    <span className="text-muted">BG Color</span>
+                    <div className="flex items-center gap-2 rounded-md border border-border bg-surface p-1">
+                      <input
+                        type="color"
+                        value={exportConfig.bgColor}
+                        onChange={(e) => setExportConfig((c) => ({ ...c, bgColor: e.target.value }))}
+                        className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                        aria-label="Background color"
+                      />
+                      <input
+                        type="text"
+                        value={exportConfig.bgColor}
+                        onChange={(e) => setExportConfig((c) => ({ ...c, bgColor: e.target.value }))}
+                        className="w-full bg-transparent font-mono text-xs text-text focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <pre className="max-h-[55vh] overflow-auto rounded-lg border border-border bg-elevated/40 p-3 font-mono text-xs leading-relaxed text-text">
+              <code>{exportCodeText}</code>
+            </pre>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={downloadExportCode}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-text hover:bg-elevated"
+            >
+              <Download className="h-3.5 w-3.5" /> Download .{codeFormat === 'jsx' ? 'tsx' : codeFormat}
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyExportCode()}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500"
+            >
+              {copiedCode ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copiedCode ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Import SVG to Board</DialogTitle>
+            <DialogDescription>Choose an .svg file or paste SVG markup below. You can also press Ctrl+V directly on the canvas.</DialogDescription>
+          </DialogHeader>
+          <input ref={svgFileInputRef} type="file" accept=".svg,image/svg+xml" onChange={handleImportSvgFile} className="hidden" />
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => svgFileInputRef.current?.click()}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-text hover:bg-elevated"
+            >
+              <Upload className="h-3.5 w-3.5" /> Choose .svg file
+            </button>
+            <span className="text-xs text-muted">Supports rect, circle, ellipse, line, path, polygon, text</span>
+          </div>
+          <textarea
+            value={importSvgText}
+            onChange={(e) => setImportSvgText(e.target.value)}
+            placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">...</svg>'
+            rows={9}
+            className="w-full rounded-lg border border-border bg-elevated/40 p-3 font-mono text-xs text-text placeholder:text-muted/60 focus:border-indigo-500 focus:outline-none"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setImportModalOpen(false)}
+              className="flex h-8 items-center rounded-lg border border-border bg-surface px-3 text-xs font-medium text-text hover:bg-elevated"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!importSvgText.trim()}
+              onClick={() => {
+                if (insertSvgToBoard(importSvgText)) setImportModalOpen(false)
+              }}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+            >
+              Add to board
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
