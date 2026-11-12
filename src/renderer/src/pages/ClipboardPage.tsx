@@ -14,11 +14,12 @@ import {
   Scissors,
   X, Image as ImageIcon } from 'lucide-react'
 import type { ClipItem } from '../../../shared/types'
-import { detectClipType, ClipCategory, copyClip } from '../utils/clipboardUtils'
+import { detectClipType, ClipCategory, copyClip, clipImageUrl } from '../utils/clipboardUtils'
 import ClipboardItemRow from '../components/ClipboardItemRow'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { useToast } from '../components/ui/toast'
 
 export default function ClipboardPage(): React.JSX.Element {
@@ -29,6 +30,7 @@ export default function ClipboardPage(): React.JSX.Element {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
   const [copiedBulk, setCopiedBulk] = useState(false)
+  const [previewClip, setPreviewClip] = useState<ClipItem | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const toast = useToast()
@@ -411,10 +413,51 @@ export default function ClipboardPage(): React.JSX.Element {
               onToggleSelect={handleToggleSelect}
               onTogglePin={handleTogglePin}
               onDelete={handleDelete}
+              onPreview={setPreviewClip}
             />
           ))}
         </div>
       )}
+
+      <Dialog open={!!previewClip} onOpenChange={(open) => !open && setPreviewClip(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <span>Image Preview</span>
+              {previewClip?.image && (
+                <span className="font-mono text-xs font-normal text-muted">
+                  {previewClip.image.width}×{previewClip.image.height}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          {previewClip && (
+            <div className="space-y-3">
+              <div className="flex max-h-[72vh] items-center justify-center overflow-auto rounded-lg border border-border bg-[repeating-conic-gradient(rgb(var(--elevated))_0%_25%,transparent_0%_50%)] bg-[length:14px_14px] p-2">
+                <img
+                  src={clipImageUrl(previewClip.id)}
+                  alt={previewClip.text}
+                  className="max-h-[68vh] max-w-full rounded object-contain"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    void handleCopy(previewClip.id, previewClip.text)
+                    toast('Copied image to clipboard')
+                  }}
+                  className="gap-1.5 bg-indigo-600 text-white hover:bg-indigo-500"
+                >
+                  {copiedId === previewClip.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedId === previewClip.id ? 'Copied!' : 'Copy image'}</span>
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

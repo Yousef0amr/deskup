@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, Notification } from 'electron'
 import { randomUUID } from 'crypto'
 import { store } from './store'
+import { getWindowIcon, getWindowIconPath } from './tray'
 import { advanceFocus, changeFocus } from '../shared/focus'
 import type { FocusAction, FocusState, FocusSessionEntry } from '../shared/types'
 
@@ -61,7 +62,8 @@ export function startFocusService(): void {
     if (Notification.isSupported()) {
       new Notification({
         title: state.mode === 'break' ? 'Focus session complete' : 'Break complete',
-        body: 'Your next session is ready. Start it when you are ready.'
+        body: 'Your next session is ready. Start it when you are ready.',
+        icon: getWindowIconPath() ?? getWindowIcon()
       }).show()
     }
   }

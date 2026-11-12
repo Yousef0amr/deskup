@@ -75,6 +75,12 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
+// App identity for OS notifications and taskbar grouping
+app.setName('Deskup')
+if (process.platform === 'win32') {
+  app.setAppUserModelId(app.isPackaged ? 'com.deskup.app' : 'Deskup')
+}
+
 // App lifecycle
 app.on('before-quit', () => {
   isQuitting = true

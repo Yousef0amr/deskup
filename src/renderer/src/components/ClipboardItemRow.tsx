@@ -1,5 +1,5 @@
 import React from 'react'
-import { Globe, Code, FileText, Pin, Copy, Check, Trash2, Image as ImageIcon } from 'lucide-react'
+import { Globe, Code, FileText, Pin, Copy, Check, Trash2, Image as ImageIcon, Maximize2 } from 'lucide-react'
 import type { ClipItem } from '../../../shared/types'
 import { formatTimeAgo, detectClipType, clipImageUrl } from '../utils/clipboardUtils'
 import { Badge } from './ui/badge'
@@ -14,6 +14,7 @@ interface ClipboardItemRowProps {
   onToggleSelect: (id: string, shiftKey: boolean) => void
   onTogglePin: (e: React.MouseEvent, id: string) => void
   onDelete: (e: React.MouseEvent, id: string) => void
+  onPreview?: (clip: ClipItem) => void
 }
 
 export default function ClipboardItemRow({
@@ -24,7 +25,8 @@ export default function ClipboardItemRow({
   onCopy,
   onToggleSelect,
   onTogglePin,
-  onDelete
+  onDelete,
+  onPreview
 }: ClipboardItemRowProps): React.JSX.Element {
   const clipType = clip.image ? 'image' : detectClipType(clip.text)
   const isMultiLine = clip.text.includes('\n')
@@ -113,7 +115,16 @@ export default function ClipboardItemRow({
             alt={clip.text}
             loading="lazy"
             draggable={false}
-            className="mt-1 max-h-40 max-w-full rounded-md border border-border bg-[repeating-conic-gradient(rgb(var(--elevated))_0%_25%,transparent_0%_50%)] bg-[length:12px_12px] object-contain"
+            onClick={(e) => {
+              if (!selectionMode && onPreview) {
+                e.stopPropagation()
+                onPreview(clip)
+              }
+            }}
+            title={onPreview && !selectionMode ? 'Click to preview full image' : undefined}
+            className={`mt-1 max-h-40 max-w-full rounded-md border border-border bg-[repeating-conic-gradient(rgb(var(--elevated))_0%_25%,transparent_0%_50%)] bg-[length:12px_12px] object-contain ${
+              onPreview && !selectionMode ? 'cursor-zoom-in hover:border-indigo-500/60' : ''
+            }`}
           />
         ) : (
         <div
@@ -128,6 +139,21 @@ export default function ClipboardItemRow({
 
       {/* Right Actions */}
       <div className="flex items-center gap-1 shrink-0 pt-0.5">
+        {clip.image && onPreview && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation()
+              onPreview(clip)
+            }}
+            className="opacity-0 group-hover:opacity-100 text-muted hover:text-text"
+            title="Preview full image"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
         {isCopied ? (
           <Badge variant="success" className="px-2.5 py-1 text-xs gap-1 animate-fade-in">
             <Check className="w-3.5 h-3.5" />
