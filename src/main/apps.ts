@@ -1,19 +1,19 @@
-import fs from 'fs'
+import { promises as fs } from 'fs'
 import path from 'path'
 import type { InstalledApp } from '../shared/types'
 
 let cachedApps: InstalledApp[] | null = null
 let lastScanTime = 0
+let pendingScan: Promise<InstalledApp[]> | null = null
 const CACHE_TTL_MS = 60000 // Cache for 1 minute
 
-function scanWindowsShortcuts(dir: string, map: Map<string, InstalledApp>): void {
-  if (!fs.existsSync(dir)) return
+async function scanWindowsShortcuts(dir: string, map: Map<string, InstalledApp>): Promise<void> {
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    const entries = await fs.readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) {
-        scanWindowsShortcuts(full, map)
+        await scanWindowsShortcuts(full, map)
       } else if (entry.name.toLowerCase().endsWith('.lnk')) {
         const name = entry.name.slice(0, -4).trim()
         const lower = name.toLowerCase()
@@ -37,10 +37,9 @@ function scanWindowsShortcuts(dir: string, map: Map<string, InstalledApp>): void
   }
 }
 
-function scanMacApps(dir: string, map: Map<string, InstalledApp>): void {
-  if (!fs.existsSync(dir)) return
+async function scanMacApps(dir: string, map: Map<string, InstalledApp>): Promise<void> {
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    const entries = await fs.readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.name.toLowerCase().endsWith('.app')) {
         const name = entry.name.slice(0, -4).trim()
@@ -55,15 +54,14 @@ function scanMacApps(dir: string, map: Map<string, InstalledApp>): void {
   }
 }
 
-function scanLinuxDesktopFiles(dir: string, map: Map<string, InstalledApp>): void {
-  if (!fs.existsSync(dir)) return
+async function scanLinuxDesktopFiles(dir: string, map: Map<string, InstalledApp>): Promise<void> {
   try {
-    const files = fs.readdirSync(dir)
+    const files = await fs.readdir(dir)
     for (const file of files) {
       if (file.toLowerCase().endsWith('.desktop')) {
         const full = path.join(dir, file)
         try {
-          const content = fs.readFileSync(full, 'utf8')
+          const content = await fs.readFile(full, 'utf8')
           const nameMatch = content.match(/^Name=(.+)$/m)
           const execMatch = content.match(/^Exec=(.+)$/m)
           if (nameMatch && execMatch) {
@@ -89,7 +87,19 @@ export async function getInstalledApps(): Promise<InstalledApp[]> {
   if (cachedApps && now - lastScanTime < CACHE_TTL_MS) {
     return cachedApps
   }
+  if (pendingScan) return pendingScan
 
+  pendingScan = scanInstalledApps()
+  try {
+    cachedApps = await pendingScan
+    lastScanTime = Date.now()
+    return cachedApps
+  } finally {
+    pendingScan = null
+  }
+}
+
+async function scanInstalledApps(): Promise<InstalledApp[]> {
   const map = new Map<string, InstalledApp>()
 
   if (process.platform === 'win32') {
@@ -113,8 +123,8 @@ export async function getInstalledApps(): Promise<InstalledApp[]> {
       path.join(process.env.ProgramData || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs')
     ]
 
-    for (const d of startDirs) {
-      scanWindowsShortcuts(d, map)
+    for (const d of new Set(startDirs)) {
+      await scanWindowsShortcuts(d, map)
     }
   } else if (process.platform === 'darwin') {
     const macDirs = [
@@ -123,7 +133,7 @@ export async function getInstalledApps(): Promise<InstalledApp[]> {
       path.join(process.env.HOME || '', 'Applications')
     ]
     for (const d of macDirs) {
-      scanMacApps(d, map)
+      await scanMacApps(d, map)
     }
   } else {
     // Linux
@@ -133,12 +143,9 @@ export async function getInstalledApps(): Promise<InstalledApp[]> {
       path.join(process.env.HOME || '', '.local', 'share', 'applications')
     ]
     for (const d of linuxDirs) {
-      scanLinuxDesktopFiles(d, map)
+      await scanLinuxDesktopFiles(d, map)
     }
   }
 
-  cachedApps = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
-  lastScanTime = now
-  return cachedApps
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
 }
-

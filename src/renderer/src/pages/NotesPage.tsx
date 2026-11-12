@@ -7,6 +7,8 @@ import NotesSidebarList from '../components/NotesSidebarList'
 import NotesToolbar from '../components/NotesToolbar'
 import NoteEditorHeader from '../components/NoteEditorHeader'
 import MarkdownPreview from '../components/MarkdownPreview'
+import { Button } from '../components/ui/button'
+import { Card } from '../components/ui/card'
 
 export default function NotesPage(): React.JSX.Element {
   const [notes, setNotes] = useState<NoteItem[]>([])
@@ -31,7 +33,7 @@ export default function NotesPage(): React.JSX.Element {
         setIsLoading(false)
       }
     }
-    load()
+    void load()
   }, [])
 
   const activeNote = useMemo(
@@ -56,9 +58,7 @@ export default function NotesPage(): React.JSX.Element {
 
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaveStatus('saving')
-    saveTimer.current = setTimeout(() => {
-      void persistNote(updated)
-    }, 400)
+    saveTimer.current = setTimeout(() => void persistNote(updated), 400)
   }
 
   const handleCreateNote = async (title?: string, content?: string, folder?: string) => {
@@ -132,24 +132,22 @@ export default function NotesPage(): React.JSX.Element {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-2xl font-bold tracking-tight text-text">Workspace Notes</h2>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-              {notes.length} {notes.length === 1 ? 'note' : 'notes'}
-            </span>
+          <div className="flex items-baseline gap-2.5">
+            <h2 className="text-xl font-semibold tracking-tight text-text">Notes</h2>
+            <span className="text-xs text-muted tabular-nums">{notes.length}</span>
           </div>
           <p className="text-xs text-muted mt-1">
-            Group notes by folder (Work, Personal, Dev, Ideas), apply templates, format with markdown, and auto-save.
+            Markdown notes organised by folder. Changes save automatically.
           </p>
         </div>
 
-        <button
+        <Button
           onClick={() => handleCreateNote()}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer self-start sm:self-auto"
+          className="gap-2 self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>New Note</span>
-        </button>
+        </Button>
       </div>
 
       {/* Main 2-Column Studio */}
@@ -171,7 +169,7 @@ export default function NotesPage(): React.JSX.Element {
         />
 
         {/* Right Column: Note Canvas & Toolbar */}
-        <div className="md:col-span-8 bg-surface/60 border border-border rounded-2xl p-6 shadow-lg flex flex-col justify-between">
+        <Card className="md:col-span-8 p-6 flex flex-col justify-between">
           {activeNote ? (
             <>
               {/* Note Header */}
@@ -228,7 +226,7 @@ export default function NotesPage(): React.JSX.Element {
               <p>Select or create a note to begin writing.</p>
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )

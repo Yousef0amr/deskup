@@ -4,6 +4,10 @@ import type { NoteItem } from '../../../shared/types'
 import { formatTimeAgo } from '../utils/clipboardUtils'
 import { getFolderStyle, NOTE_COLORS } from '../utils/notesUtils'
 import NotesFolderFilter from './NotesFolderFilter'
+import { Card } from './ui/card'
+import { Input } from './ui/input'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 
 interface NotesSidebarListProps {
   notes: NoteItem[]
@@ -54,25 +58,28 @@ export default function NotesSidebarList({
   }, [notes, search, activeFolder])
 
   return (
-    <div className="md:col-span-4 bg-surface/60 border border-border rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+    <Card className="md:col-span-4 p-4 flex flex-col justify-between">
       <div className="space-y-3">
         {/* Search */}
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
+          <Search className="w-3.5 h-3.5 text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Input
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search notes or folders..."
-            className="w-full pl-8 pr-7 py-2 bg-elevated/70 border border-border rounded-xl text-xs text-text placeholder-muted focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="pl-8 pr-7 h-9 text-xs"
           />
           {search && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => onSearchChange('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-text"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted hover:text-text"
             >
               <X className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           )}
         </div>
 
@@ -94,12 +101,14 @@ export default function NotesSidebarList({
               <p className="text-[11px]">
                 {activeFolder !== 'All' ? `No notes in "${activeFolder}".` : 'Create your first note.'}
               </p>
-              <button
+              <Button
+                variant="link"
+                size="sm"
                 onClick={onCreateNote}
-                className="text-indigo-600 dark:text-indigo-400 font-semibold underline text-xs pt-1"
+                className="text-indigo-600 dark:text-indigo-400 font-semibold h-auto p-0 text-xs pt-1"
               >
                 + New Note
-              </button>
+              </Button>
             </div>
           ) : (
             filteredNotes.map((note) => {
@@ -131,21 +140,27 @@ export default function NotesSidebarList({
                       </h4>
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={(e) => onTogglePin(note.id, e)}
-                        className="p-1 text-muted hover:text-amber-500 rounded"
+                        className="h-6 w-6 text-muted hover:text-amber-500"
                         title={note.pinned ? 'Unpin' : 'Pin note'}
                       >
                         <Pin className="w-3 h-3" />
-                      </button>
+                      </Button>
                       {notes.length > 1 && (
-                        <button
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
                           onClick={(e) => onDeleteNote(note.id, e)}
-                          className="p-1 text-muted hover:text-rose-500 rounded"
+                          className="h-6 w-6 text-muted hover:text-rose-500"
                           title="Delete note"
                         >
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -153,11 +168,12 @@ export default function NotesSidebarList({
                   <p className="text-[11px] text-muted truncate font-mono mb-2">{preview}</p>
 
                   <div className="flex items-center justify-between text-[10px] text-muted">
-                    <span
-                      className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${folderStyle.bg} ${folderStyle.text} ${folderStyle.border}`}
+                    <Badge
+                      variant="outline"
+                      className={`px-1.5 py-0 text-[9px] font-semibold border ${folderStyle.bg} ${folderStyle.text} ${folderStyle.border}`}
                     >
                       {note.folder || 'General'}
-                    </span>
+                    </Badge>
                     <span>{formatTimeAgo(note.updatedAt)}</span>
                   </div>
                 </div>
@@ -170,14 +186,17 @@ export default function NotesSidebarList({
       {/* Footer */}
       <div className="pt-3 border-t border-border/50 text-[11px] text-muted flex justify-between items-center">
         <span>{filteredNotes.length} notes shown</span>
-        <button
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
           onClick={onCreateNote}
-          className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-0.5"
+          className="h-auto p-0 text-indigo-600 dark:text-indigo-400 font-semibold gap-0.5"
         >
           <Plus className="w-3 h-3" />
           <span>Add Note</span>
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }

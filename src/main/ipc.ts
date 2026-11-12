@@ -1,14 +1,20 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app, clipboard, nativeImage } from 'electron'
 import { promises as fs } from 'fs'
 import os from 'os'
 import { store, defaultSettings } from './store'
 import { mergeSettings } from '../shared/settings'
-import { validateBackup } from '../shared/backup'
+import { validateBackup, BACKUP_VERSION } from '../shared/backup'
+import { validateTodos } from '../shared/todos'
+import { validateHabits } from '../shared/habits'
+import { validateBoardData, type BoardData } from '../shared/board'
+import { validateWhiteboards, type Whiteboard } from '../shared/whiteboard'
 import { join } from 'path'
 import { launchProfileItems } from './launcher'
+import { applyLoginItem } from './loginItem'
 import { getInstalledApps } from './apps'
 import {
   copyClipText,
+  copyClipImage,
   toggleClipPin,
   deleteClipItem,
   clearClipboardHistory,
@@ -18,6 +24,7 @@ import { hideClipboardPopup } from './clipboardPopup'
 import type {
   Profile,
   Todo,
+  Habit,
   Settings,
   LaunchResult,
   ClipItem,
@@ -101,18 +108,33 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('todos:save', async (_, rawTodos: unknown): Promise<void> => {
-    if (!Array.isArray(rawTodos)) {
-      throw new Error('Todos must be an array')
-    }
+    store.set('todos', validateTodos(rawTodos))
+  })
 
-    const cleanTodos: Todo[] = rawTodos.map((item, index) => ({
-      id: String(item.id || Date.now() + index),
-      text: String(item.text || '').trim(),
-      done: Boolean(item.done),
-      order: typeof item.order === 'number' ? item.order : index
-    }))
+  // Whiteboards
+  ipcMain.handle('whiteboards:list', async (): Promise<Whiteboard[]> => store.get('whiteboards', []))
+  ipcMain.handle('whiteboards:save', async (_, raw: unknown): Promise<void> => {
+    store.set('whiteboards', validateWhiteboards(raw))
+  })
 
-    store.set('todos', cleanTodos)
+  // Developer board
+  ipcMain.handle('board:get', async (): Promise<BoardData> => {
+    return store.get('boardData', { boards: [], cards: [] })
+  })
+
+  ipcMain.handle('board:save', async (_, raw: unknown): Promise<void> => {
+    store.set('boardData', validateBoardData(raw))
+  })
+
+  // Habits
+  ipcMain.handle('habits:list', async (): Promise<Habit[]> => {
+    return store.get('habits', [])
+  })
+
+  ipcMain.handle('habits:save', async (_, rawHabits: unknown): Promise<Habit[]> => {
+    const habits = validateHabits(rawHabits)
+    store.set('habits', habits)
+    return habits
   })
 
   // Notes (Multi-note support + legacy fallback)
@@ -130,8 +152,7 @@ export function registerIpcHandlers(
         updatedAt: Date.now()
       }
       list = [initial]
-      store.set('notesList', list)
-      store.set('notes', initial.content)
+      store.set({ notesList: list, notes: initial.content })
     }
     return list
   }
@@ -160,8 +181,7 @@ export function registerIpcHandlers(
         color: typeof color === 'string' ? color : 'indigo'
       }
       const updated = [newNote, ...list]
-      store.set('notesList', updated)
-      store.set('notes', updated[0]?.content ?? '')
+      store.set({ notesList: updated, notes: updated[0]?.content ?? '' })
       return newNote
     }
   )
@@ -193,8 +213,7 @@ export function registerIpcHandlers(
       updated = [cleanNote, ...list]
     }
 
-    store.set('notesList', updated)
-    store.set('notes', updated[0]?.content ?? '')
+    store.set({ notesList: updated, notes: updated[0]?.content ?? '' })
     return cleanNote
   })
 
@@ -208,8 +227,7 @@ export function registerIpcHandlers(
       updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
       pinned: Boolean(n.pinned)
     }))
-    store.set('notesList', cleanList)
-    store.set('notes', cleanList[0]?.content ?? '')
+    store.set({ notesList: cleanList, notes: cleanList[0]?.content ?? '' })
   })
 
   ipcMain.handle('notes:delete', async (_, id: unknown): Promise<void> => {
@@ -227,8 +245,7 @@ export function registerIpcHandlers(
         }
       ]
     }
-    store.set('notesList', updated)
-    store.set('notes', updated[0]?.content ?? '')
+    store.set({ notesList: updated, notes: updated[0]?.content ?? '' })
   })
 
   // Legacy backwards compatibility
@@ -245,9 +262,8 @@ export function registerIpcHandlers(
     if (list.length > 0) {
       list[0].content = text
       list[0].updatedAt = Date.now()
-      store.set('notesList', list)
     }
-    store.set('notes', text)
+    store.set({ notesList: list, notes: text })
   })
 
   // System Resource Stats
@@ -290,6 +306,20 @@ export function registerIpcHandlers(
   ipcMain.handle('clipboard:copy', async (_, text: unknown): Promise<void> => {
     if (typeof text !== 'string') throw new Error('Clip text must be a string')
     copyClipText(text)
+  })
+
+  ipcMain.handle('clipboard:copyImage', async (_, id: unknown): Promise<void> => {
+    if (typeof id !== 'string' || !id) throw new Error('Clip ID must be a string')
+    copyClipImage(id)
+  })
+
+  ipcMain.handle('clipboard:copyImageData', async (_, dataUrl: unknown): Promise<void> => {
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,') || dataUrl.length > 40_000_000) {
+      throw new Error('Expected a PNG data URL')
+    }
+    const img = nativeImage.createFromDataURL(dataUrl)
+    if (img.isEmpty()) throw new Error('Image is empty')
+    clipboard.writeImage(img)
   })
 
   ipcMain.handle('clipboard:pin', async (_, id: unknown): Promise<void> => {
@@ -342,6 +372,10 @@ export function registerIpcHandlers(
       hotkey: typeof p.hotkey === 'string' && p.hotkey.trim() ? p.hotkey.trim() : current.hotkey,
       launchAtLogin: typeof p.launchAtLogin === 'boolean' ? p.launchAtLogin : current.launchAtLogin,
       minimizeToTray: typeof p.minimizeToTray === 'boolean' ? p.minimizeToTray : current.minimizeToTray,
+      dailyFocusGoalMin:
+        typeof p.dailyFocusGoalMin === 'number' && p.dailyFocusGoalMin > 0
+          ? Math.min(1440, Math.round(p.dailyFocusGoalMin))
+          : current.dailyFocusGoalMin,
       clipboard: {
         enabled: typeof p.clipboard?.enabled === 'boolean' ? p.clipboard.enabled : current.clipboard?.enabled ?? true,
         maxItems:
@@ -352,17 +386,15 @@ export function registerIpcHandlers(
         hotkey:
           typeof p.clipboard?.hotkey === 'string' && p.clipboard.hotkey.trim()
             ? p.clipboard.hotkey.trim()
-            : current.clipboard?.hotkey ?? 'CommandOrControl+Shift+V'
+            : current.clipboard?.hotkey ?? 'CommandOrControl+Shift+V',
+        captureImages:
+          typeof p.clipboard?.captureImages === 'boolean' ? p.clipboard.captureImages : current.clipboard?.captureImages ?? true
       }
     }
 
     store.set('settings', updated)
 
-    try {
-      app.setLoginItemSettings({ openAtLogin: updated.launchAtLogin })
-    } catch (e) {
-      console.warn('Could not update login item settings:', e)
-    }
+    applyLoginItem(updated.launchAtLogin)
 
     callbacks?.onSettingsChanged?.(updated)
     return updated
@@ -417,13 +449,17 @@ export function registerIpcHandlers(
     if (canceled || !filePath) return false
 
     const data = {
-      version: 5,
+      version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       profiles: store.get('profiles', []),
       todos: store.get('todos', []),
+      habits: store.get('habits', []),
+      boardData: store.get('boardData', { boards: [], cards: [] }),
+      whiteboards: store.get('whiteboards', []),
       notes: store.get('notes', ''),
       notesList: store.get('notesList', []),
       clipboardHistory: store.get('clipboardHistory', []),
+      focusHistory: store.get('focusHistory', []),
       settings: store.get('settings', defaultSettings)
     }
 
@@ -452,11 +488,10 @@ export function registerIpcHandlers(
     if (choice.response !== 1) return false
     const previous = store.store
     const recoveryPath = join(app.getPath('userData'), 'deskup-recovery-' + Date.now() + '.json')
-    await fs.writeFile(recoveryPath, JSON.stringify({ ...previous, version: 5 }, null, 2), { encoding: 'utf-8', flag: 'wx' })
+    await fs.writeFile(recoveryPath, JSON.stringify({ ...previous, version: BACKUP_VERSION }, null, 2), { encoding: 'utf-8', flag: 'wx' })
     store.store = { ...previous, ...imported }
     if (imported.settings) {
-      try { app.setLoginItemSettings({ openAtLogin: imported.settings.launchAtLogin }) }
-      catch (error) { console.warn('Could not apply startup setting:', error) }
+      applyLoginItem(imported.settings.launchAtLogin)
       callbacks?.onSettingsChanged?.(imported.settings)
     }
     for (const win of BrowserWindow.getAllWindows()) {

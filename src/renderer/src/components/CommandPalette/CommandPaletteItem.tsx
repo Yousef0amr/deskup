@@ -52,14 +52,14 @@ export default function CommandPaletteItem({
       onClick={onSelect}
       className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl cursor-pointer transition-all ${
         isSelected
-          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+          ? 'bg-elevated text-text'
           : 'hover:bg-elevated text-text'
       }`}
     >
       <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
         <div
           className={`p-1.5 rounded-lg shrink-0 ${
-            isSelected ? 'bg-white/20 text-white' : 'bg-elevated border border-border/50'
+            isSelected ? 'bg-surface border border-border text-indigo-600 dark:text-indigo-400' : 'bg-elevated border border-border/50'
           }`}
         >
           {renderIcon()}
@@ -71,7 +71,7 @@ export default function CommandPaletteItem({
             {command.badge && (
               <span
                 className={`text-[9px] px-1.5 py-0.2 rounded-md font-medium uppercase tracking-wider shrink-0 ${
-                  isSelected ? 'bg-white/20 text-white' : 'bg-elevated border border-border/60 text-muted'
+                  isSelected ? 'bg-surface border border-border text-muted' : 'bg-elevated border border-border/60 text-muted'
                 }`}
               >
                 {command.badge}
@@ -81,7 +81,7 @@ export default function CommandPaletteItem({
           {command.subtitle && (
             <p
               className={`text-[11px] truncate mt-0.5 ${
-                isSelected ? 'text-indigo-100' : 'text-muted'
+                isSelected ? 'text-muted' : 'text-muted'
               }`}
             >
               {command.subtitle}
@@ -92,7 +92,7 @@ export default function CommandPaletteItem({
 
       <div className="shrink-0 flex items-center gap-1.5">
         {isSelected && (
-          <span className="flex items-center gap-1 text-[10px] text-white/80 bg-white/10 px-2 py-0.5 rounded-md font-mono">
+          <span className="flex items-center gap-1 text-[10px] text-muted px-1.5 py-0.5 font-mono">
             <span>Press</span>
             <CornerDownLeft className="w-3 h-3" />
           </span>

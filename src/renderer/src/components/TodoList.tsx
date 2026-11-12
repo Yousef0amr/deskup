@@ -1,16 +1,32 @@
-import React, { useState, useEffect } from 'react'
-import { Plus, ListTodo, Sparkles } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { ListTodo, CheckCircle2 } from 'lucide-react'
 import type { Todo } from '../../../shared/types'
 import TodoItemRow from './TodoItemRow'
+import TodoForm from './TodoForm'
+import TodoFilterBar from './TodoFilterBar'
+import { filterTodos, moveTodo, type TodoFilter } from '../../../shared/todos'
+import { WidgetHeader } from './ui/widget-header'
+import { useToast } from './ui/toast'
+import { Card } from './ui/card'
+import { emitDataChanged, onTodoFilterRequest, revealSection } from '../lib/events'
 
-type FilterMode = 'all' | 'active' | 'high' | 'done'
+type FilterMode = TodoFilter
 
 export default function TodoList(): React.JSX.Element {
   const [todos, setTodos] = useState<Todo[]>([])
   const [newText, setNewText] = useState('')
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium')
   const [isLoading, setIsLoading] = useState(true)
-  const [filter, setFilter] = useState<FilterMode>('all')
+  const [filter, setFilter] = useState<FilterMode>('active')
+  const [newDueDate, setNewDueDate] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [loadFailed, setLoadFailed] = useState(false)
+  const toast = useToast()
+  const todosRef = useRef<Todo[]>([])
+  todosRef.current = todos
+  const saveQueue = useRef<Promise<void>>(Promise.resolve())
+  const revision = useRef(0)
 
   useEffect(() => {
     async function load() {
@@ -19,36 +35,51 @@ export default function TodoList(): React.JSX.Element {
         setTodos(list.sort((a, b) => a.order - b.order))
       } catch (err) {
         console.error('Failed to load todos:', err)
+        setLoadFailed(true)
+        setError('Could not load tasks. Reopen the dashboard to retry.')
       } finally {
         setIsLoading(false)
       }
     }
-    load()
+    void load()
+    return onTodoFilterRequest(setFilter)
   }, [])
 
   const saveTodos = async (updated: Todo[]) => {
     setTodos(updated)
+    const version = ++revision.current
+    setError('')
+    saveQueue.current = saveQueue.current.catch(() => {}).then(() => window.deskup.todos.save(updated))
     try {
-      await window.deskup.todos.save(updated)
+      await saveQueue.current
+      emitDataChanged('todos')
     } catch (err) {
       console.error('Failed to save todos:', err)
+      if (version === revision.current) {
+        setError('Changes are not saved. Retry before leaving.')
+      }
     }
   }
 
   const handleAddTodo = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newText.trim()) return
+    if (!newText.trim() || isLoading || loadFailed) return
 
     const newTodo: Todo = {
       id: 'todo_' + Date.now() + Math.random().toString(36).substring(2, 5),
       text: newText.trim(),
       done: false,
       order: todos.length,
-      priority: newPriority
+      priority: newPriority,
+      dueDate: newDueDate || undefined
     }
 
-    const updated = [...todos, newTodo]
+    const updated = editingId
+      ? todos.map((t) => (t.id === editingId ? { ...t, text: newTodo.text, priority: newPriority, dueDate: newTodo.dueDate } : t))
+      : [...todos, newTodo]
     setNewText('')
+    setNewDueDate('')
+    setEditingId(null)
     void saveTodos(updated)
   }
 
@@ -57,158 +88,126 @@ export default function TodoList(): React.JSX.Element {
     void saveTodos(updated)
   }
 
+  // Removed tasks can be restored from the toast's Undo button.
+  const offerUndo = (removed: Todo[], message: string) => {
+    toast(message, 'info', {
+      label: 'Undo',
+      onClick: () => {
+        const restored = [...todosRef.current]
+        for (const todo of [...removed].sort((a, b) => a.order - b.order)) {
+          if (!restored.some((item) => item.id === todo.id)) {
+            restored.splice(Math.min(todo.order, restored.length), 0, todo)
+          }
+        }
+        void saveTodos(restored.map((todo, order) => ({ ...todo, order })))
+      }
+    })
+  }
+
   const handleDelete = (id: string) => {
+    const removed = todos.filter((t) => t.id === id)
+    if (removed.length) offerUndo(removed, `Deleted “${removed[0].text}”`)
+    if (editingId === id) { setEditingId(null); setNewText(''); setNewDueDate('') }
     const updated = todos.filter((t) => t.id !== id).map((t, idx) => ({ ...t, order: idx }))
     void saveTodos(updated)
   }
 
   const handleClearCompleted = () => {
+    const removed = todos.filter((t) => t.done)
+    offerUndo(removed, `Cleared ${removed.length} completed ${removed.length === 1 ? 'task' : 'tasks'}`)
+    if (todos.some((t) => t.id === editingId && t.done)) { setEditingId(null); setNewText(''); setNewDueDate('') }
     const updated = todos.filter((t) => !t.done).map((t, idx) => ({ ...t, order: idx }))
     void saveTodos(updated)
   }
 
   const handleMove = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1
-    if (targetIndex < 0 || targetIndex >= todos.length) return
-
-    const reordered = [...todos]
-    const [moved] = reordered.splice(index, 1)
-    reordered.splice(targetIndex, 0, moved)
-
-    const updated = reordered.map((t, idx) => ({ ...t, order: idx }))
-    void saveTodos(updated)
+    const visible = filterTodos(todos, filter)
+    if (!visible[index] || !visible[targetIndex]) return
+    void saveTodos(moveTodo(todos, visible[index].id, visible[targetIndex].id))
   }
 
   const handleFocusOnTask = (taskText: string) => {
-    void window.deskup.focus.action('start', { taskName: taskText, category: 'Deep Work' })
+    window.deskup.focus
+      .action('start', { taskName: taskText, category: 'Deep Work' })
+      .then(() => {
+        toast(`Focusing on “${taskText}”`, 'info')
+        revealSection('dash-focus')
+      })
+      .catch(() => toast('Could not start focus. Try again.', 'error'))
   }
 
   const completedCount = todos.filter((t) => t.done).length
   const totalCount = todos.length
   const percentDone = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
-
-  const filteredTodos = todos.filter((t) => {
-    if (filter === 'active') return !t.done
-    if (filter === 'high') return t.priority === 'high' && !t.done
-    if (filter === 'done') return t.done
-    return true
-  })
+  const filteredTodos = filterTodos(todos, filter)
 
   return (
-    <div className="bg-surface/60 border border-border rounded-2xl p-5 shadow-lg flex flex-col h-full min-h-[320px]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <ListTodo className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h3 className="font-semibold text-text text-base">To-Do List</h3>
-        </div>
-
-        {totalCount > 0 && (
-          <span className="text-xs font-medium text-muted bg-elevated px-2.5 py-1 rounded-full border border-border/60 flex items-center gap-1.5">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span>{completedCount}/{totalCount} done ({percentDone}%)</span>
-          </span>
-        )}
-      </div>
-
-      {/* Filter Tabs & Add Form */}
-      <div className="space-y-2 mb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex bg-elevated/60 p-0.5 rounded-lg border border-border/40 text-[11px] font-medium">
-            <button
-              type="button"
-              onClick={() => setFilter('all')}
-              className={`px-2.5 py-1 rounded-md transition-all ${
-                filter === 'all' ? 'bg-surface text-text shadow-sm font-semibold' : 'text-muted hover:text-text'
-              }`}
-            >
-              All ({totalCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('active')}
-              className={`px-2.5 py-1 rounded-md transition-all ${
-                filter === 'active' ? 'bg-surface text-text shadow-sm font-semibold' : 'text-muted hover:text-text'
-              }`}
-            >
-              Active ({totalCount - completedCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('high')}
-              className={`px-2.5 py-1 rounded-md transition-all ${
-                filter === 'high' ? 'bg-surface text-rose-500 shadow-sm font-semibold' : 'text-muted hover:text-text'
-              }`}
-            >
-              High ({todos.filter((t) => t.priority === 'high' && !t.done).length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('done')}
-              className={`px-2.5 py-1 rounded-md transition-all ${
-                filter === 'done' ? 'bg-surface text-text shadow-sm font-semibold' : 'text-muted hover:text-text'
-              }`}
-            >
-              Done ({completedCount})
-            </button>
+    <Card className="flex h-full flex-col p-4">
+      <WidgetHeader
+        icon={ListTodo}
+        title="Tasks"
+        subtitle={totalCount > 0 ? `${completedCount} of ${totalCount} done` : undefined}
+        actions={totalCount > 0 && (
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-elevated" aria-label={`${percentDone}% complete`}>
+            <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${percentDone}%` }} />
           </div>
+        )}
+      />
 
-          {completedCount > 0 && (
-            <button
-              type="button"
-              onClick={handleClearCompleted}
-              className="text-[11px] text-muted hover:text-rose-500 transition-colors"
-            >
-              Clear done
-            </button>
-          )}
-        </div>
+      {error && <p role="alert" className="text-xs text-rose-500 mb-2">{error} {!loadFailed && <button onClick={() => void saveTodos(todos)} className="underline cursor-pointer">Retry save</button>}</p>}
+      <div className="mb-2 space-y-2">
+        <TodoForm
+          newText={newText}
+          newPriority={newPriority}
+          newDueDate={newDueDate}
+          editingId={editingId}
+          isLoading={isLoading}
+          loadFailed={loadFailed}
+          onTextChange={setNewText}
+          onPriorityChange={setNewPriority}
+          onDueDateChange={setNewDueDate}
+          onSubmit={handleAddTodo}
+          onCancelEdit={() => { setEditingId(null); setNewText(''); setNewDueDate('') }}
+        />
 
-        {/* Add Todo Input */}
-        <form onSubmit={handleAddTodo} className="flex gap-1.5">
-          <input
-            type="text"
-            value={newText}
-            onChange={(e) => setNewText(e.target.value)}
-            placeholder="Add a new task (e.g. Finish report)..."
-            className="min-w-0 flex-1 px-3 py-1.5 bg-elevated/80 border border-border/80 rounded-xl text-xs text-text placeholder-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <select
-            value={newPriority}
-            onChange={(e) => setNewPriority(e.target.value as 'high' | 'medium' | 'low')}
-            className="px-2 py-1.5 bg-elevated/80 border border-border/80 rounded-xl text-xs text-text focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            title="Set task priority"
-          >
-            <option value="high">🔴 High</option>
-            <option value="medium">🟡 Med</option>
-            <option value="low">🟢 Low</option>
-          </select>
-          <button
-            type="submit"
-            disabled={!newText.trim()}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors shrink-0 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Add</span>
-          </button>
-        </form>
+        <TodoFilterBar
+          filter={filter}
+          todos={todos}
+          completedCount={completedCount}
+          totalCount={totalCount}
+          onFilterChange={setFilter}
+          onClearCompleted={handleClearCompleted}
+        />
       </div>
 
       {/* Todo Items */}
-      <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[160px] max-h-[250px]">
+      <div className="-mx-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1">
         {isLoading ? (
-          <p className="text-xs text-muted py-8 text-center">Loading tasks...</p>
+          <div className="space-y-1.5 py-1" aria-busy>
+            {[0, 1, 2].map((i) => <div key={i} className="h-9 animate-pulse rounded-lg bg-elevated" />)}
+          </div>
         ) : filteredTodos.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-muted text-xs py-8 space-y-1.5 border border-dashed border-border/40 rounded-xl">
-            {filter === 'done' ? (
-              <p>No completed tasks yet. Keep focusing!</p>
-            ) : filter === 'active' ? (
-              <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
-                <Sparkles className="w-4 h-4" />
-                <span>All caught up! Zero pending tasks.</span>
-              </div>
+          <div className="flex flex-col items-center justify-center gap-1 py-8 text-center text-xs text-muted">
+            {filter === 'active' && totalCount > 0 ? (
+              <>
+                <CheckCircle2 className="mb-1 h-5 w-5 text-emerald-500" />
+                <p className="font-medium text-text">All caught up</p>
+                <p>Every task is done. Add the next one above.</p>
+              </>
+            ) : filter === 'today' ? (
+              <p>Nothing due today or overdue.</p>
+            ) : filter === 'upcoming' ? (
+              <p>No upcoming tasks with a due date.</p>
+            ) : filter === 'high' ? (
+              <p>No open high-priority tasks.</p>
+            ) : filter === 'done' ? (
+              <p>Completed tasks will show up here.</p>
             ) : (
-              <p>No tasks found. Add a task above!</p>
+              <>
+                <p className="font-medium text-text">No tasks yet</p>
+                <p>Type above and press Enter to add your first task.</p>
+              </>
             )}
           </div>
         ) : (
@@ -222,10 +221,17 @@ export default function TodoList(): React.JSX.Element {
               onMove={handleMove}
               onDelete={handleDelete}
               onFocusTask={handleFocusOnTask}
+              onEdit={(item) => {
+                setEditingId(item.id)
+                setNewText(item.text)
+                setNewPriority(item.priority ?? 'medium')
+                setNewDueDate(item.dueDate ?? '')
+                document.getElementById('task-name')?.focus()
+              }}
             />
           ))
         )}
       </div>
-    </div>
+    </Card>
   )
 }

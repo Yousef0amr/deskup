@@ -1,35 +1,19 @@
 import React, { useState, useEffect } from 'react'
-import {
-  X,
-  Trash2,
-  FolderOpen,
-  AppWindow,
-  Globe,
-  Clock,
-  Palette,
-  Smile,
-  Edit3
-} from 'lucide-react'
+import { X, FolderOpen, AppWindow, Globe } from 'lucide-react'
 import type { Profile, ProfileItem, ItemType, InstalledApp } from '../../../shared/types'
 import AppPickerModal from './AppPickerModal'
+import ProfileEditorMeta from './ProfileEditorMeta'
+import ProfileEditorItemRow from './ProfileEditorItemRow'
+import { Button } from './ui/button'
 
 interface ProfileEditorProps {
-  profile: Profile | null // null means create new
+  profile: Profile | null
   onSave: (profile: Profile) => Promise<void>
   onClose: () => void
 }
 
 const EMOJI_PRESETS = ['💼', '💻', '📚', '🎧', '🚀', '🎯', '☕', '🎮', '🎨', '📝', '⚡', '🛠️']
-const COLOR_PRESETS = [
-  '#6366f1', // Indigo
-  '#06b6d4', // Cyan
-  '#10b981', // Emerald
-  '#f59e0b', // Amber
-  '#ef4444', // Red
-  '#ec4899', // Pink
-  '#8b5cf6', // Violet
-  '#64748b'  // Slate
-]
+const COLOR_PRESETS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#64748b']
 
 export default function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps): React.JSX.Element {
   const [name, setName] = useState(profile?.name || '')
@@ -43,12 +27,9 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
   const [pickingItemId, setPickingItemId] = useState<string | null>(null)
   const [manualEditItemIds, setManualEditItemIds] = useState<Record<string, boolean>>({})
 
-  // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
+      if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -69,12 +50,17 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
     setItems((prev) => [...prev, newItem])
   }
 
+  const handleUpdateItem = (id: string, patch: Partial<ProfileItem>) => {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)))
+  }
+
+  const handleRemoveItem = (id: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== id))
+  }
+
   const handleSelectApp = (app: InstalledApp) => {
     if (pickingItemId) {
-      handleUpdateItem(pickingItemId, {
-        target: app.path,
-        label: app.name
-      })
+      handleUpdateItem(pickingItemId, { target: app.path, label: app.name })
     } else {
       const newItem: ProfileItem = {
         id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
@@ -98,13 +84,10 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
         if (targetItemId) {
           handleUpdateItem(targetItemId, { target: path, label: cleanName })
         } else {
-          const newItem: ProfileItem = {
-            id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
-            type: 'app',
-            label: cleanName,
-            target: path
-          }
-          setItems((prev) => [...prev, newItem])
+          setItems((prev) => [
+            ...prev,
+            { id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6), type: 'app', label: cleanName, target: path }
+          ])
         }
       }
     } catch (err) {
@@ -114,62 +97,44 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
     }
   }
 
-  const handleUpdateItem = (id: string, patch: Partial<ProfileItem>) => {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)))
-  }
-
-  const handleRemoveItem = (id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id))
-  }
-
-  const handlePickFile = async (itemId: string) => {
+  const handlePickFile = async (id: string) => {
     try {
       const path = await window.deskup.dialog.pickFile()
       if (path) {
-        handleUpdateItem(itemId, {
-          target: path,
-          label: path.split(/[\\/]/).pop() || path
-        })
+        const cleanName = path.split(/[\\/]/).pop()?.replace(/\.(exe|lnk|bat|cmd)$/i, '') || path
+        handleUpdateItem(id, { target: path, label: cleanName })
       }
-    } catch (err) {
-      console.error('File pick error:', err)
-    }
+    } catch (err) { console.error('File pick error:', err) }
   }
 
-  const handlePickFolder = async (itemId: string) => {
+  const handlePickFolder = async (id: string) => {
     try {
       const path = await window.deskup.dialog.pickFolder()
       if (path) {
-        handleUpdateItem(itemId, {
-          target: path,
-          label: path.split(/[\\/]/).pop() || path
-        })
+        const folderName = path.split(/[\\/]/).filter(Boolean).pop() || path
+        handleUpdateItem(id, { target: path, label: folderName })
       }
-    } catch (err) {
-      console.error('Folder pick error:', err)
-    }
+    } catch (err) { console.error('Folder pick error:', err) }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) {
-      setErrorMessage('Please give your workspace profile a name.')
+      setErrorMessage('Profile name is required')
       return
     }
-
-    setIsSaving(true)
     setErrorMessage(null)
-
+    setIsSaving(true)
     try {
-      const finalProfile: Profile = {
+      const updatedProfile: Profile = {
         id: profile?.id || 'prof_' + Date.now(),
         name: name.trim(),
         icon,
         color,
-        launchDelayMs: Number(launchDelayMs) || 300,
+        launchDelayMs,
         items
       }
-      await onSave(finalProfile)
+      await onSave(updatedProfile)
       onClose()
     } catch (err) {
       setErrorMessage((err as Error).message || 'Failed to save profile')
@@ -179,124 +144,38 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl bg-surface border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+      <div className="bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-inner"
-              style={{ backgroundColor: `${color}20`, borderColor: `${color}40`, borderWidth: 1 }}
-            >
-              {icon}
-            </span>
-            <div>
-              <h3 className="text-lg font-semibold text-text">
-                {profile ? 'Edit Workspace Profile' : 'New Workspace Profile'}
-              </h3>
-              <p className="text-xs text-muted">Configure apps, folders, and websites</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-muted hover:text-text rounded-lg hover:bg-elevated transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <h3 className="font-bold text-text text-base">
+            {profile ? 'Edit Workspace Profile' : 'New Workspace Profile'}
+          </h3>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 text-muted">
+            <X className="w-4 h-4" />
+          </Button>
         </div>
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {errorMessage && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-300 text-xs rounded-xl">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs rounded-xl">
               {errorMessage}
             </div>
           )}
 
-          {/* Profile Name & Icon */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-text mb-1.5">
-                Profile Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Deep Work, Study, Morning Setup"
-                className="w-full px-3.5 py-2.5 bg-elevated/80 border border-border rounded-xl text-text placeholder-muted text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                autoFocus
-              />
-            </div>
-
-            {/* Icon Picker */}
-            <div>
-              <label className="block text-xs font-medium text-text mb-1.5 flex items-center gap-1.5">
-                <Smile className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Icon</span>
-              </label>
-              <div className="flex flex-wrap gap-2 items-center">
-                {EMOJI_PRESETS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => setIcon(emoji)}
-                    className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all ${
-                      icon === emoji
-                        ? 'bg-indigo-600 text-white scale-110 shadow-md ring-2 ring-indigo-400'
-                        : 'bg-elevated text-text hover:bg-hover'
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-                <input
-                  type="text"
-                  value={icon}
-                  onChange={(e) => setIcon(e.target.value.slice(0, 2))}
-                  className="w-12 h-9 text-center bg-elevated border border-border rounded-lg text-sm text-text"
-                  title="Custom emoji"
-                />
-              </div>
-            </div>
-
-            {/* Color Accent */}
-            <div>
-              <label className="block text-xs font-medium text-text mb-1.5 flex items-center gap-1.5">
-                <Palette className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Color Accent</span>
-              </label>
-              <div className="flex items-center gap-2">
-                {COLOR_PRESETS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColor(c)}
-                    className={`w-7 h-7 rounded-full transition-transform ${
-                      color === c ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'hover:scale-110'
-                    }`}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Launch Delay */}
-            <div>
-              <label className="block text-xs font-medium text-text mb-1.5 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Delay Between Items (ms)</span>
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="50"
-                value={launchDelayMs}
-                onChange={(e) => setLaunchDelayMs(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-36 px-3 py-1.5 bg-elevated border border-border rounded-lg text-text text-sm"
-              />
-            </div>
-          </div>
+          <ProfileEditorMeta
+            name={name}
+            icon={icon}
+            color={color}
+            launchDelayMs={launchDelayMs}
+            emojiPresets={EMOJI_PRESETS}
+            colorPresets={COLOR_PRESETS}
+            onNameChange={setName}
+            onIconChange={setIcon}
+            onColorChange={setColor}
+            onDelayChange={setLaunchDelayMs}
+          />
 
           {/* Items Section */}
           <div className="border-t border-border pt-5">
@@ -306,180 +185,41 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
                 <p className="text-xs text-muted">Items that will open when you click Launch</p>
               </div>
               <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleAddItem('app')}
-                  className="px-2.5 py-1.5 bg-elevated hover:bg-hover text-text text-xs font-medium rounded-lg flex items-center gap-1 border border-border transition-colors"
-                >
+                <Button type="button" variant="secondary" size="sm" onClick={() => handleAddItem('app')} className="gap-1 h-7 text-xs">
                   <AppWindow className="w-3.5 h-3.5 text-sky-400" />
                   <span>+ App</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddItem('folder')}
-                  className="px-2.5 py-1.5 bg-elevated hover:bg-hover text-text text-xs font-medium rounded-lg flex items-center gap-1 border border-border transition-colors"
-                >
-                  <FolderOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => handleAddItem('folder')} className="gap-1 h-7 text-xs">
+                  <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
                   <span>+ Folder</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddItem('url')}
-                  className="px-2.5 py-1.5 bg-elevated hover:bg-hover text-text text-xs font-medium rounded-lg flex items-center gap-1 border border-border transition-colors"
-                >
-                  <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => handleAddItem('url')} className="gap-1 h-7 text-xs">
+                  <Globe className="w-3.5 h-3.5 text-emerald-500" />
                   <span>+ Website</span>
-                </button>
+                </Button>
               </div>
             </div>
 
             {items.length === 0 ? (
               <div className="text-center py-8 border border-dashed border-border rounded-xl bg-surface/40">
                 <p className="text-xs text-muted">No items added yet.</p>
-                <p className="text-[11px] text-muted mt-1">
-                  Click + App, + Folder, or + Website above to get started.
-                </p>
+                <p className="text-[11px] text-muted mt-1">Click + App, + Folder, or + Website above to get started.</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {items.map((it, idx) => (
-                  <div
+                  <ProfileEditorItemRow
                     key={it.id}
-                    className="p-3 bg-elevated/60 border border-border/60 rounded-xl space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono text-muted w-4">{idx + 1}.</span>
-                        <span className="text-xs px-2 py-0.5 rounded font-medium bg-hover text-text uppercase tracking-wider flex items-center gap-1">
-                          {it.type === 'app' && <AppWindow className="w-3 h-3 text-sky-400" />}
-                          {it.type === 'folder' && <FolderOpen className="w-3 h-3 text-amber-600 dark:text-amber-400" />}
-                          {it.type === 'url' && <Globe className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
-                          {it.type}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(it.id)}
-                        className="text-muted hover:text-rose-400 p-1 rounded transition-colors"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <input
-                        type="text"
-                        value={it.label || ''}
-                        onChange={(e) => handleUpdateItem(it.id, { label: e.target.value })}
-                        placeholder="Label (optional)"
-                        className="px-2.5 py-1.5 bg-surface border border-border rounded-lg text-xs text-text placeholder-muted focus:outline-none focus:border-indigo-500"
-                      />
-
-                      {it.type === 'app' && !manualEditItemIds[it.id] ? (
-                        <div className="sm:col-span-2 flex items-center gap-1.5">
-                          {it.target ? (
-                            <div className="flex-1 flex items-center justify-between px-3 py-1.5 bg-surface border border-border rounded-lg min-w-0">
-                              <div className="flex items-center gap-2 min-w-0 pr-2">
-                                <AppWindow className="w-4 h-4 text-sky-400 shrink-0" />
-                                <span className="text-xs font-semibold text-text truncate">
-                                  {it.label || it.target.split(/[\\/]/).pop()?.replace(/\.lnk$/i, '') || it.target}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setPickingItemId(it.id)
-                                    setIsAppPickerOpen(true)
-                                  }}
-                                  className="px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-md transition-colors"
-                                >
-                                  Change
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setManualEditItemIds((prev) => ({ ...prev, [it.id]: true }))
-                                  }
-                                  title="Edit custom path or command"
-                                  className="p-1 text-muted hover:text-text rounded"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPickingItemId(it.id)
-                                setIsAppPickerOpen(true)
-                              }}
-                              className="flex-1 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                            >
-                              <AppWindow className="w-4 h-4" />
-                              <span>Select an Application...</span>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handlePickFile(it.id)}
-                            className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
-                            title="Browse files for custom .exe or .lnk"
-                          >
-                            Browse
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="sm:col-span-2 flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={it.target}
-                            onChange={(e) => handleUpdateItem(it.id, { target: e.target.value })}
-                            placeholder={
-                              it.type === 'url'
-                                ? 'https://github.com'
-                                : it.type === 'folder'
-                                ? 'C:\\projects\\my-app'
-                                : 'Path or command (e.g. code)'
-                            }
-                            className="flex-1 px-2.5 py-1.5 bg-surface border border-border rounded-lg text-xs text-text placeholder-muted font-mono focus:outline-none focus:border-indigo-500"
-                          />
-                          {it.type === 'app' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPickingItemId(it.id)
-                                  setIsAppPickerOpen(true)
-                                }}
-                                className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-lg whitespace-nowrap"
-                              >
-                                Select App
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handlePickFile(it.id)}
-                                className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
-                              >
-                                Browse
-                              </button>
-                            </>
-                          )}
-                          {it.type === 'folder' && (
-                            <button
-                              type="button"
-                              onClick={() => handlePickFolder(it.id)}
-                              className="px-2.5 py-1.5 bg-hover hover:bg-muted text-text text-xs rounded-lg whitespace-nowrap"
-                            >
-                              Browse
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    item={it}
+                    index={idx}
+                    isManualEdit={Boolean(manualEditItemIds[it.id])}
+                    onUpdate={(patch) => handleUpdateItem(it.id, patch)}
+                    onRemove={() => handleRemoveItem(it.id)}
+                    onOpenPicker={() => { setPickingItemId(it.id); setIsAppPickerOpen(true) }}
+                    onPickFile={() => handlePickFile(it.id)}
+                    onPickFolder={() => handlePickFolder(it.id)}
+                    onToggleManualEdit={() => setManualEditItemIds((prev) => ({ ...prev, [it.id]: true }))}
+                  />
                 ))}
               </div>
             )}
@@ -488,34 +228,21 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-border bg-surface/80 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-text hover:text-text hover:bg-elevated rounded-xl transition-colors"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={isSaving}
-            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleSubmit} disabled={isSaving}>
             {isSaving ? 'Saving...' : 'Save Profile'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Installed Application Picker Modal */}
       <AppPickerModal
         isOpen={isAppPickerOpen}
         onSelect={handleSelectApp}
-        onClose={() => {
-          setIsAppPickerOpen(false)
-          setPickingItemId(null)
-        }}
+        onClose={() => { setIsAppPickerOpen(false); setPickingItemId(null) }}
         onBrowseCustomFile={handleBrowseFromPicker}
       />
     </div>
   )
 }
-

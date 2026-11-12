@@ -1,4 +1,5 @@
-import type { Profile, NoteItem, ClipItem, FocusState } from '../../../shared/types'
+import type { Profile, NoteItem, ClipItem, FocusState, AppTab } from '../../../shared/types'
+import { requestTodoFilter, revealSection } from '../lib/events'
 
 export type CommandCategory = 'workspaces' | 'notes' | 'focus' | 'clipboard' | 'navigation' | 'theme'
 
@@ -19,7 +20,7 @@ export function buildCommandList(
     notes: NoteItem[]
     clips: ClipItem[]
     focusState: FocusState | null
-    onNavigate: (tab: 'dashboard' | 'profiles' | 'notes' | 'clipboard' | 'settings') => void
+    onNavigate: (tab: AppTab) => void
     onOpenNote: (id: string) => void
     onLaunchProfile: (id: string) => void
     onFocusAction: (action: 'start' | 'pause' | 'reset') => void
@@ -32,8 +33,11 @@ export function buildCommandList(
   const q = query.trim().toLowerCase()
 
   // 1. Navigation Commands
-  const navItems: { id: string; title: string; tab: 'dashboard' | 'profiles' | 'notes' | 'clipboard' | 'settings' }[] = [
+  const navItems: { id: string; title: string; tab: AppTab }[] = [
+    { id: 'nav-tools', title: 'Work tools: text, JSON, Base64, URL, timestamp', tab: 'tools' },
     { id: 'nav-dash', title: 'Go to Dashboard', tab: 'dashboard' },
+    { id: 'nav-board', title: 'Go to Board (kanban, dev tasks)', tab: 'board' },
+    { id: 'nav-whiteboard', title: 'Go to Whiteboard (sketch, diagrams)', tab: 'whiteboard' },
     { id: 'nav-profiles', title: 'Go to Workspace Profiles', tab: 'profiles' },
     { id: 'nav-notes', title: 'Go to Notes Studio', tab: 'notes' },
     { id: 'nav-clip', title: 'Go to Clipboard History', tab: 'clipboard' },
@@ -49,6 +53,29 @@ export function buildCommandList(
         category: 'navigation',
         iconType: 'navigation',
         action: () => data.onNavigate(nav.tab)
+      })
+    }
+  }
+
+  // Dashboard shortcuts: jump straight to a widget (the page mounts lazily, so wait a beat)
+  const openOnDashboard = (run: () => void) => {
+    data.onNavigate('dashboard')
+    setTimeout(run, 350)
+  }
+  const dashboardShortcuts = [
+    { id: 'dash-today', title: "Today's tasks", keywords: 'today tasks todo due overdue', run: () => { requestTodoFilter('today'); revealSection('dash-tasks') } },
+    { id: 'dash-add-task', title: 'Add a task', keywords: 'new task todo add', run: () => { revealSection('dash-tasks'); document.getElementById('task-name')?.focus() } },
+    { id: 'dash-habits', title: 'Check off habits', keywords: 'habits streak routine', run: () => revealSection('dash-habits') }
+  ]
+  for (const item of dashboardShortcuts) {
+    if (!q || item.title.toLowerCase().includes(q) || item.keywords.includes(q)) {
+      commands.push({
+        id: item.id,
+        title: item.title,
+        subtitle: 'Dashboard',
+        category: 'navigation',
+        iconType: item.id === 'dash-add-task' ? 'plus' : 'navigation',
+        action: () => openOnDashboard(item.run)
       })
     }
   }
@@ -177,4 +204,3 @@ export function buildCommandList(
 
   return commands
 }
-

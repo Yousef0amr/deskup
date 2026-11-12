@@ -11,9 +11,10 @@ let activeCategory: string = 'Coding'
 let sessionStartedAt: number | null = null
 
 export function startFocusService(): void {
+  let durations = store.get('settings').pomodoro
   let state: FocusState = store.get('focusState') ?? {
     mode: 'work',
-    remainingMs: store.get('settings').pomodoro.workMin * 60000,
+    remainingMs: durations.workMin * 60000,
     endsAt: null,
     sessionsCompleted: 0
   }
@@ -27,7 +28,7 @@ export function startFocusService(): void {
 
   const recordCompletedSession = () => {
     const history = store.get('focusHistory') ?? []
-    const durationMs = store.get('settings').pomodoro.workMin * 60000
+    const durationMs = durations.workMin * 60000
     const endedAt = Date.now()
     const startedAt = sessionStartedAt ?? (endedAt - durationMs)
 
@@ -47,7 +48,7 @@ export function startFocusService(): void {
   }
 
   const tick = () => {
-    const next = advanceFocus(state, store.get('settings').pomodoro, Date.now())
+    const next = advanceFocus(state, durations, Date.now())
     if (next === state) return
 
     if (state.mode === 'work' && next.mode === 'break') {
@@ -82,7 +83,7 @@ export function startFocusService(): void {
       if (state.endsAt === null) sessionStartedAt = Date.now()
     }
 
-    state = changeFocus(state, action as FocusAction, store.get('settings').pomodoro, Date.now())
+    state = changeFocus(state, action as FocusAction, durations, Date.now())
     publish()
     return state
   })
@@ -113,8 +114,10 @@ export function startFocusService(): void {
   tick()
 
   unsubscribeSettings = store.onDidChange('settings', (settings, previous) => {
+    if (settings) durations = settings.pomodoro
     if (!settings || !previous || state.endsAt !== null) return
     const key = state.mode === 'work' ? 'workMin' : 'breakMin'
+    if (settings.pomodoro[key] === previous.pomodoro[key]) return
     if (state.remainingMs !== previous.pomodoro[key] * 60000) return
     state = { ...state, remainingMs: settings.pomodoro[key] * 60000 }
     publish()

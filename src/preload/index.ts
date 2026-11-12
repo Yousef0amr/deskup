@@ -3,6 +3,7 @@ import type {
   DeskupAPI,
   Profile,
   Todo,
+  Habit,
   Settings,
   ClipItem
 } from '../shared/types'
@@ -31,6 +32,18 @@ const api: DeskupAPI = {
     list: () => ipcRenderer.invoke('todos:list'),
     save: (todos: Todo[]) => ipcRenderer.invoke('todos:save', todos)
   },
+  whiteboards: {
+    list: () => ipcRenderer.invoke('whiteboards:list'),
+    save: (boards) => ipcRenderer.invoke('whiteboards:save', boards)
+  },
+  board: {
+    get: () => ipcRenderer.invoke('board:get'),
+    save: (data) => ipcRenderer.invoke('board:save', data)
+  },
+  habits: {
+    list: () => ipcRenderer.invoke('habits:list'),
+    save: (habits: Habit[]) => ipcRenderer.invoke('habits:save', habits)
+  },
   notes: {
     get: () => ipcRenderer.invoke('notes:get'),
     save: (text: string) => ipcRenderer.invoke('notes:save', text),
@@ -44,9 +57,21 @@ const api: DeskupAPI = {
   system: {
     getStats: () => ipcRenderer.invoke('system:getStats')
   },
+  music: {
+    list: () => ipcRenderer.invoke('music:list'),
+    add: () => ipcRenderer.invoke('music:add'),
+    remove: (id: string) => ipcRenderer.invoke('music:remove', id),
+    onChanged: callback => {
+      const handler = (_: unknown, tracks: import('../shared/types').MusicTrack[]) => callback(tracks)
+      ipcRenderer.on('music:changed', handler)
+      return () => { ipcRenderer.removeListener('music:changed', handler) }
+    }
+  },
   clipboard: {
     list: () => ipcRenderer.invoke('clipboard:list'),
     copy: (text: string) => ipcRenderer.invoke('clipboard:copy', text),
+    copyImage: (id: string) => ipcRenderer.invoke('clipboard:copyImage', id),
+    copyImageData: (dataUrl: string) => ipcRenderer.invoke('clipboard:copyImageData', dataUrl),
     pin: (id: string) => ipcRenderer.invoke('clipboard:pin', id),
     delete: (id: string) => ipcRenderer.invoke('clipboard:delete', id),
     clear: (includePinned?: boolean) => ipcRenderer.invoke('clipboard:clear', includePinned),

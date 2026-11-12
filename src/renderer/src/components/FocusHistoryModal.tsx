@@ -36,7 +36,7 @@ export default function FocusHistoryModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full max-w-2xl bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] z-10 animate-scale-up">
+      <div className="relative w-full max-w-2xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] z-10 animate-scale-up">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border/80 bg-elevated/40">
           <div className="flex items-center gap-2.5">
@@ -87,7 +87,7 @@ export default function FocusHistoryModal({
 
           {/* Grouped Entries List */}
           {grouped.length === 0 ? (
-            <div className="text-center py-12 text-muted border border-dashed border-border/70 rounded-2xl space-y-2">
+            <div className="text-center py-12 text-muted border border-dashed border-border/70 rounded-xl space-y-2">
               <Flame className="w-8 h-8 text-indigo-500/40 mx-auto" />
               <p className="text-sm font-semibold text-text">No focus sessions recorded yet</p>
               <p className="text-xs max-w-sm mx-auto">
