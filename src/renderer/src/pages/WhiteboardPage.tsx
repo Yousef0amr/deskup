@@ -23,12 +23,15 @@ import {
   Copy,
   Check,
   ChevronDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  Box,
   Plus,
   Trash2,
   CopyPlus,
   PaintBucket
 } from 'lucide-react'
-import type { Bounds, LineElement, ShapeElement, WbElement, Whiteboard } from '../../../shared/whiteboard'
+import type { Bounds, ElementAnimation, LineElement, ShapeElement, StrokeStyle, WbElement, Whiteboard } from '../../../shared/whiteboard'
 import {
   STICKY_COLORS,
   WB_COLORS,
@@ -41,6 +44,7 @@ import {
   unionBounds
 } from '../../../shared/whiteboard'
 import WbElementView, { FONT, INK } from '../components/whiteboard/WbElementView'
+import WbLayersPanel, { type AlignKind } from '../components/whiteboard/WbLayersPanel'
 import {
   buildExportCode,
   buildSvgString,
@@ -63,8 +67,8 @@ type Interaction =
   | { kind: 'draw'; el: WbElement; sx: number; sy: number }
   | { kind: 'move'; sx: number; sy: number; before: WbElement[]; moved: boolean }
   | { kind: 'marquee'; sx: number; sy: number; additive: Set<string> }
-  | { kind: 'resize'; id: string; before: WbElement[] }
-  | { kind: 'endpoint'; id: string; end: 1 | 2; before: WbElement[] }
+  | { kind: 'resize'; id: string; handle: string; before: WbElement[] }
+  | { kind: 'endpoint'; id: string; end: 1 | 2 | 'c'; before: WbElement[] }
   | { kind: 'erase'; before: WbElement[]; erased: boolean }
 
 const TOOLS: { id: Tool; label: string; key: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -112,7 +116,13 @@ export default function WhiteboardPage(): React.JSX.Element {
   const [tool, setTool] = useState<Tool>('select')
   const [color, setColor] = useState(INK)
   const [width, setWidth] = useState(WIDTHS[0])
+  const [strokeStyle, setStrokeStyle] = useState<StrokeStyle>('solid')
+  const [opacity, setOpacity] = useState(1)
   const [fill, setFill] = useState(false)
+  const [fillColor, setFillColor] = useState('')
+  const [cornerRadius, setCornerRadius] = useState(8)
+  const [depth, setDepth] = useState(0)
+  const [fontSize, setFontSize] = useState(20)
   const [stickyColor, setStickyColor] = useState(STICKY_COLORS[0])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [draft, setDraft] = useState<WbElement | null>(null)
@@ -126,6 +136,11 @@ export default function WhiteboardPage(): React.JSX.Element {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [importSvgText, setImportSvgText] = useState('')
   const [ioMenuOpen, setIoMenuOpen] = useState(false)
+  const [layersOpen, setLayersOpen] = useState(true)
+  const [snapToGrid, setSnapToGrid] = useState(false)
+  const [view3D, setView3D] = useState(false)
+  const [tiltX, setTiltX] = useState(24)
+  const [tiltY, setTiltY] = useState(-18)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const contentRef = useRef<SVGGElement>(null)
@@ -272,7 +287,10 @@ export default function WhiteboardPage(): React.JSX.Element {
   const elementAt = (clientX: number, clientY: number): string | null => {
     for (const node of document.elementsFromPoint(clientX, clientY)) {
       const id = (node as Element).closest?.('[data-id]')?.getAttribute('data-id')
-      if (id && contentRef.current?.contains(node)) return id
+      if (id && contentRef.current?.contains(node)) {
+        const el = elementsRef.current.find((x) => x.id === id)
+        if (el && !el.hidden && !el.locked) return id
+      }
     }
     return null
   }
@@ -298,6 +316,102 @@ export default function WhiteboardPage(): React.JSX.Element {
     commit(elementsRef.current.map((el) => (selected.has(el.id) ? patch(el) : el)))
   }
 
+  const bringToFront = () => {
+    if (!selected.size) return
+    const rest = elementsRef.current.filter((el) => !selected.has(el.id))
+    const sel = elementsRef.current.filter((el) => selected.has(el.id))
+    commit([...rest, ...sel])
+  }
+
+  const sendToBack = () => {
+    if (!selected.size) return
+    const sel = elementsRef.current.filter((el) => selected.has(el.id))
+    const rest = elementsRef.current.filter((el) => !selected.has(el.id))
+    commit([...sel, ...rest])
+  }
+
+  const groupSelected = useCallback(() => {
+    if (selected.size < 2) return
+    const gid = newId()
+    commit(elementsRef.current.map((el) => (selected.has(el.id) ? { ...el, groupId: gid } : el)))
+    toast('Grouped elements')
+  }, [commit, selected, toast])
+
+  const ungroupSelected = useCallback(() => {
+    if (!selected.size) return
+    commit(
+      elementsRef.current.map((el) => {
+        if (!selected.has(el.id) || !el.groupId) return el
+        const { groupId: _g, ...rest } = el
+        return rest
+      })
+    )
+    toast('Ungrouped elements')
+  }, [commit, selected, toast])
+
+  const toggleHidden = (id: string) => {
+    commit(elementsRef.current.map((el) => (el.id === id ? { ...el, hidden: !el.hidden } : el)))
+  }
+
+  const toggleLocked = (id: string) => {
+    commit(elementsRef.current.map((el) => (el.id === id ? { ...el, locked: !el.locked } : el)))
+  }
+
+  const moveLayer = (id: string, dir: 'up' | 'down') => {
+    const list = [...elementsRef.current]
+    const idx = list.findIndex((el) => el.id === id)
+    if (idx === -1) return
+    const target = dir === 'up' ? idx + 1 : idx - 1
+    if (target < 0 || target >= list.length) return
+    ;[list[idx], list[target]] = [list[target], list[idx]]
+    commit(list)
+  }
+
+  const alignSelected = (kind: AlignKind) => {
+    const sel = elementsRef.current.filter((el) => selected.has(el.id) && !el.locked)
+    if (sel.length < 2) return
+    const entries = sel.map((el) => ({ el, b: elementBounds(el) }))
+    const total = unionBounds(entries.map((e) => e.b))
+    if (!total) return
+
+    const shifts = new Map<string, [number, number]>()
+    if (kind === 'distH' && entries.length >= 3) {
+      const sorted = [...entries].sort((a, b) => a.b.x - b.b.x)
+      const totalW = sorted.reduce((acc, e) => acc + e.b.w, 0)
+      const gap = (total.w - totalW) / (sorted.length - 1)
+      let cursor = total.x
+      for (const e of sorted) {
+        shifts.set(e.el.id, [cursor - e.b.x, 0])
+        cursor += e.b.w + gap
+      }
+    } else if (kind === 'distV' && entries.length >= 3) {
+      const sorted = [...entries].sort((a, b) => a.b.y - b.b.y)
+      const totalH = sorted.reduce((acc, e) => acc + e.b.h, 0)
+      const gap = (total.h - totalH) / (sorted.length - 1)
+      let cursor = total.y
+      for (const e of sorted) {
+        shifts.set(e.el.id, [0, cursor - e.b.y])
+        cursor += e.b.h + gap
+      }
+    } else {
+      for (const { el, b } of entries) {
+        if (kind === 'left') shifts.set(el.id, [total.x - b.x, 0])
+        else if (kind === 'centerH') shifts.set(el.id, [total.x + total.w / 2 - (b.x + b.w / 2), 0])
+        else if (kind === 'right') shifts.set(el.id, [total.x + total.w - (b.x + b.w), 0])
+        else if (kind === 'top') shifts.set(el.id, [0, total.y - b.y])
+        else if (kind === 'centerV') shifts.set(el.id, [0, total.y + total.h / 2 - (b.y + b.h / 2)])
+        else if (kind === 'bottom') shifts.set(el.id, [0, total.y + total.h - (b.y + b.h)])
+      }
+    }
+
+    commit(
+      elementsRef.current.map((el) => {
+        const s = shifts.get(el.id)
+        return s && (s[0] !== 0 || s[1] !== 0) ? translateElement(el, s[0], s[1]) : el
+      })
+    )
+  }
+
   // ---------------- pointer handling
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (editingId) return
@@ -315,24 +429,33 @@ export default function WhiteboardPage(): React.JSX.Element {
     if (handle && selected.size === 1) {
       const id = [...selected][0]
       interaction.current =
-        handle === 'resize'
-          ? { kind: 'resize', id, before: elementsRef.current }
-          : { kind: 'endpoint', id, end: handle === 'p1' ? 1 : 2, before: elementsRef.current }
+        handle === 'p1' || handle === 'p2' || handle === 'curve'
+          ? { kind: 'endpoint', id, end: handle === 'curve' ? 'c' : handle === 'p1' ? 1 : 2, before: elementsRef.current }
+          : { kind: 'resize', id, handle, before: elementsRef.current }
       svg.setPointerCapture(e.pointerId)
       return
     }
 
-    const base = { id: newId(), color }
+    const base = { id: newId(), color, ...(opacity < 1 ? { opacity } : {}) }
     switch (tool) {
       case 'select': {
         const hit = elementAt(e.clientX, e.clientY)
         if (hit) {
+          const hitEl = elementsRef.current.find((x) => x.id === hit)
+          const hitIds = !e.altKey && hitEl?.groupId
+            ? elementsRef.current.filter((x) => x.groupId === hitEl.groupId).map((x) => x.id)
+            : [hit]
           let next = selected
           if (e.shiftKey) {
             next = new Set(selected)
-            if (next.has(hit)) next.delete(hit)
-            else next.add(hit)
-          } else if (!selected.has(hit)) next = new Set([hit])
+            const allIn = hitIds.every((id) => next.has(id))
+            for (const id of hitIds) {
+              if (allIn) next.delete(id)
+              else next.add(id)
+            }
+          } else if (!selected.has(hit)) {
+            next = new Set(hitIds)
+          }
           setSelected(next)
           interaction.current = { kind: 'move', sx: p.x, sy: p.y, before: elementsRef.current, moved: false }
         } else {
@@ -349,20 +472,48 @@ export default function WhiteboardPage(): React.JSX.Element {
         break
       }
       case 'pen':
-        interaction.current = { kind: 'draw', sx: p.x, sy: p.y, el: { ...base, type: 'path', points: [[p.x, p.y]], width } }
+        interaction.current = {
+          kind: 'draw',
+          sx: p.x,
+          sy: p.y,
+          el: { ...base, type: 'path', points: [[p.x, p.y]], width, ...(strokeStyle !== 'solid' ? { strokeStyle } : {}) }
+        }
         break
       case 'rect':
       case 'ellipse':
       case 'diamond':
-        interaction.current = { kind: 'draw', sx: p.x, sy: p.y, el: { ...base, type: tool, x: p.x, y: p.y, w: 0, h: 0, width, fill } }
+        interaction.current = {
+          kind: 'draw',
+          sx: p.x,
+          sy: p.y,
+          el: {
+            ...base,
+            type: tool,
+            x: p.x,
+            y: p.y,
+            w: 0,
+            h: 0,
+            width,
+            fill,
+            ...(fillColor ? { fillColor } : {}),
+            ...(strokeStyle !== 'solid' ? { strokeStyle } : {}),
+            ...(tool === 'rect' && cornerRadius !== 8 ? { rx: cornerRadius } : {}),
+            ...(depth > 0 ? { depth } : {})
+          }
+        }
         break
       case 'arrow':
       case 'line':
-        interaction.current = { kind: 'draw', sx: p.x, sy: p.y, el: { ...base, type: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, width } }
+        interaction.current = {
+          kind: 'draw',
+          sx: p.x,
+          sy: p.y,
+          el: { ...base, type: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y, width, ...(strokeStyle !== 'solid' ? { strokeStyle } : {}) }
+        }
         break
       case 'text': {
         e.preventDefault() // keep the browser from moving focus away from the new editor
-        const el: WbElement = { ...base, type: 'text', x: p.x, y: p.y - 12, text: '', size: 20 }
+        const el: WbElement = { ...base, type: 'text', x: p.x, y: p.y - 12, text: '', size: fontSize }
         commit([...elementsRef.current, el])
         setSelected(new Set([el.id]))
         setEditingId(el.id)
@@ -370,7 +521,7 @@ export default function WhiteboardPage(): React.JSX.Element {
       }
       case 'sticky': {
         e.preventDefault()
-        const el: WbElement = { id: base.id, color: stickyColor, type: 'sticky', x: p.x - 90, y: p.y - 70, w: 180, h: 140, text: '' }
+        const el: WbElement = { id: base.id, color: stickyColor, ...(opacity < 1 ? { opacity } : {}), type: 'sticky', x: p.x - 90, y: p.y - 70, w: 180, h: 140, text: '' }
         commit([...elementsRef.current, el])
         setSelected(new Set([el.id]))
         setEditingId(el.id)
@@ -417,11 +568,15 @@ export default function WhiteboardPage(): React.JSX.Element {
         break
       }
       case 'move': {
-        const dx = p.x - it.sx
-        const dy = p.y - it.sy
+        let dx = p.x - it.sx
+        let dy = p.y - it.sy
         if (!it.moved && Math.hypot(dx, dy) * view.zoom < 3) return
         it.moved = true
-        setElements(it.before.map((el) => (selected.has(el.id) ? translateElement(el, dx, dy) : el)))
+        if (snapToGrid) {
+          dx = Math.round(dx / 24) * 24
+          dy = Math.round(dy / 24) * 24
+        }
+        setElements(it.before.map((el) => (selected.has(el.id) && !el.locked ? translateElement(el, dx, dy) : el)))
         break
       }
       case 'marquee': {
@@ -435,7 +590,54 @@ export default function WhiteboardPage(): React.JSX.Element {
         setElements(
           it.before.map((el) => {
             if (el.id !== it.id) return el
-            if (isBox(el)) return { ...el, w: Math.max(el.type === 'sticky' ? 60 : 8, p.x - el.x), h: Math.max(el.type === 'sticky' ? 50 : 8, p.y - el.y) }
+            if (it.handle === 'rotate') {
+              const b = elementBounds(el)
+              const cx = b.x + b.w / 2
+              const cy = b.y + b.h / 2
+              let deg = Math.round((Math.atan2(p.y - cy, p.x - cx) * 180) / Math.PI + 90)
+              deg = ((deg % 360) + 360) % 360
+              if (e.shiftKey) deg = Math.round(deg / 15) * 15
+              return { ...el, rotation: deg }
+            }
+            if (it.handle.startsWith('rx-') && el.type === 'rect') {
+              const idx = Number(it.handle.slice(3))
+              const maxRx = Math.min(el.w, el.h) / 2
+              const dist =
+                idx === 0
+                  ? Math.max(p.x - el.x, p.y - el.y)
+                  : idx === 1
+                    ? Math.max(el.x + el.w - p.x, p.y - el.y)
+                    : idx === 2
+                      ? Math.max(el.x + el.w - p.x, el.y + el.h - p.y)
+                      : Math.max(p.x - el.x, el.y + el.h - p.y)
+              const nextVal = Math.round(Math.max(0, Math.min(maxRx, dist)))
+              if (e.shiftKey) {
+                return { ...el, rx: nextVal, corners: [nextVal, nextVal, nextVal, nextVal] }
+              }
+              const base = el.rx ?? 8
+              const prev: [number, number, number, number] = el.corners ? [...el.corners] : [base, base, base, base]
+              prev[idx] = nextVal
+              return { ...el, corners: prev }
+            }
+            if (isBox(el)) {
+              const minW = el.type === 'sticky' ? 60 : 8
+              const minH = el.type === 'sticky' ? 50 : 8
+              let { x, y, w, h } = el
+              const hnd = it.handle === 'resize' ? 'se' : it.handle
+              if (hnd.includes('e')) w = Math.max(minW, p.x - el.x)
+              if (hnd.includes('s')) h = Math.max(minH, p.y - el.y)
+              if (hnd.includes('w')) {
+                const nw = Math.max(minW, el.x + el.w - p.x)
+                x = el.x + el.w - nw
+                w = nw
+              }
+              if (hnd.includes('n')) {
+                const nh = Math.max(minH, el.y + el.h - p.y)
+                y = el.y + el.h - nh
+                h = nh
+              }
+              return { ...el, x, y, w, h }
+            }
             if (el.type === 'text') return { ...el, size: Math.round(Math.min(160, Math.max(8, (p.y - el.y) / Math.max(1, el.text.split('\n').length) / 1.3))) }
             return el
           })
@@ -443,7 +645,15 @@ export default function WhiteboardPage(): React.JSX.Element {
         break
       }
       case 'endpoint':
-        setElements(it.before.map((el) => (el.id === it.id && (el.type === 'arrow' || el.type === 'line') ? (it.end === 1 ? { ...el, x1: p.x, y1: p.y } : { ...el, x2: p.x, y2: p.y }) : el)))
+        setElements(
+          it.before.map((el) => {
+            if (el.id !== it.id || (el.type !== 'arrow' && el.type !== 'line')) return el
+            if (it.end === 'c') {
+              return { ...el, cx: 2 * p.x - (el.x1 + el.x2) / 2, cy: 2 * p.y - (el.y1 + el.y2) / 2 }
+            }
+            return it.end === 1 ? { ...el, x1: p.x, y1: p.y } : { ...el, x2: p.x, y2: p.y }
+          })
+        )
         break
       case 'erase': {
         const hit = elementAt(e.clientX, e.clientY)
@@ -547,6 +757,10 @@ export default function WhiteboardPage(): React.JSX.Element {
       } else if (mod && key === 'd') {
         e.preventDefault()
         duplicateSelected()
+      } else if (mod && key === 'g') {
+        e.preventDefault()
+        if (e.shiftKey) ungroupSelected()
+        else groupSelected()
       } else if (mod && key === 'a') {
         e.preventDefault()
         setSelected(new Set(elementsRef.current.map((el) => el.id)))
@@ -930,8 +1144,16 @@ export default function WhiteboardPage(): React.JSX.Element {
         />
         <svg
           ref={svgRef}
-          className="absolute inset-0 h-full w-full touch-none select-none"
-          style={{ cursor }}
+          className="absolute inset-0 h-full w-full touch-none select-none transition-transform duration-200"
+          style={{
+            cursor,
+            ...(view3D
+              ? {
+                  transform: `perspective(1100px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale(0.92)`,
+                  transformStyle: 'preserve-3d' as const
+                }
+              : {})
+          }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -952,17 +1174,113 @@ export default function WhiteboardPage(): React.JSX.Element {
                 <rect x={selBounds.x - 4 / view.zoom} y={selBounds.y - 4 / view.zoom} width={selBounds.w + 8 / view.zoom} height={selBounds.h + 8 / view.zoom} fill="none" stroke="#4a6bec" strokeWidth={1 / view.zoom} strokeDasharray={`${4 / view.zoom} ${3 / view.zoom}`} />
               </g>
             )}
-            {single && !editingId && (isBox(single) || single.type === 'text') && (
+            {single && selBounds && !editingId && (() => {
+              const rx = selBounds.x + selBounds.w / 2
+              const ryTop = selBounds.y - 4 / view.zoom
+              const ryHandle = ryTop - 22 / view.zoom
+              return (
+                <g>
+                  <line x1={rx} y1={ryTop} x2={rx} y2={ryHandle} stroke="#4a6bec" strokeWidth={1 / view.zoom} pointerEvents="none" />
+                  <circle
+                    data-handle="rotate"
+                    cx={rx}
+                    cy={ryHandle}
+                    r={hs / 1.7}
+                    fill="#fff"
+                    stroke="#4a6bec"
+                    strokeWidth={1.5 / view.zoom}
+                    style={{ cursor: 'grab' }}
+                  >
+                    <title>Drag to rotate (Shift = 15° steps)</title>
+                  </circle>
+                </g>
+              )
+            })()}
+            {single && !editingId && isBox(single) && (() => {
+              const bx = selBounds!.x - 4 / view.zoom
+              const by = selBounds!.y - 4 / view.zoom
+              const bw = selBounds!.w + 8 / view.zoom
+              const bh = selBounds!.h + 8 / view.zoom
+              const boxHandles: [string, number, number, string][] = [
+                ['nw', bx, by, 'nwse-resize'],
+                ['n', bx + bw / 2, by, 'ns-resize'],
+                ['ne', bx + bw, by, 'nesw-resize'],
+                ['e', bx + bw, by + bh / 2, 'ew-resize'],
+                ['se', bx + bw, by + bh, 'nwse-resize'],
+                ['s', bx + bw / 2, by + bh, 'ns-resize'],
+                ['sw', bx, by + bh, 'nesw-resize'],
+                ['w', bx, by + bh / 2, 'ew-resize']
+              ]
+              return (
+                <>
+                  {boxHandles.map(([h, hx, hy, cur]) => (
+                    <rect key={h} data-handle={h} x={hx - hs / 2} y={hy - hs / 2} width={hs} height={hs} rx={2 / view.zoom} fill="#fff" stroke="#4a6bec" strokeWidth={1.5 / view.zoom} style={{ cursor: cur }} />
+                  ))}
+                  {single.type === 'rect' && single.w > 24 && single.h > 24 && (() => {
+                    const base = single.rx ?? 8
+                    const corners = single.corners ?? [base, base, base, base]
+                    const maxRx = Math.min(single.w, single.h) / 2
+                    const minIn = 10 / view.zoom
+                    const pts: [number, number, number][] = [
+                      [0, single.x + Math.max(minIn, Math.min(maxRx, corners[0])), single.y + Math.max(minIn, Math.min(maxRx, corners[0]))],
+                      [1, single.x + single.w - Math.max(minIn, Math.min(maxRx, corners[1])), single.y + Math.max(minIn, Math.min(maxRx, corners[1]))],
+                      [2, single.x + single.w - Math.max(minIn, Math.min(maxRx, corners[2])), single.y + single.h - Math.max(minIn, Math.min(maxRx, corners[2]))],
+                      [3, single.x + Math.max(minIn, Math.min(maxRx, corners[3])), single.y + single.h - Math.max(minIn, Math.min(maxRx, corners[3]))]
+                    ]
+                    return pts.map(([idx, cx, cy]) => (
+                      <circle
+                        key={`rx-${idx}`}
+                        data-handle={`rx-${idx}`}
+                        cx={cx}
+                        cy={cy}
+                        r={hs / 2}
+                        fill="#fff"
+                        stroke="#4a6bec"
+                        strokeWidth={1.5 / view.zoom}
+                        style={{ cursor: idx === 0 || idx === 2 ? 'nwse-resize' : 'nesw-resize' }}
+                      >
+                        <title>Drag to curve this corner (Shift = all corners)</title>
+                      </circle>
+                    ))
+                  })()}
+                </>
+              )
+            })()}
+            {single && !editingId && single.type === 'text' && (
               <rect data-handle="resize" x={selBounds!.x + selBounds!.w - hs / 2 + 4 / view.zoom} y={selBounds!.y + selBounds!.h - hs / 2 + 4 / view.zoom} width={hs} height={hs} rx={2 / view.zoom} fill="#fff" stroke="#4a6bec" strokeWidth={1.5 / view.zoom} style={{ cursor: 'nwse-resize' }} />
             )}
-            {single && !editingId && (single.type === 'arrow' || single.type === 'line') && (
-              <>
-                {[1, 2].map((end) => {
-                  const l = single as LineElement
-                  return <circle key={end} data-handle={`p${end}`} cx={end === 1 ? l.x1 : l.x2} cy={end === 1 ? l.y1 : l.y2} r={hs / 1.6} fill="#fff" stroke="#4a6bec" strokeWidth={1.5 / view.zoom} style={{ cursor: 'move' }} />
-                })}
-              </>
-            )}
+            {single && !editingId && (single.type === 'arrow' || single.type === 'line') && (() => {
+              const l = single as LineElement
+              const midX = l.cx !== undefined ? 0.25 * l.x1 + 0.5 * l.cx + 0.25 * l.x2 : (l.x1 + l.x2) / 2
+              const midY = l.cy !== undefined ? 0.25 * l.y1 + 0.5 * l.cy + 0.25 * l.y2 : (l.y1 + l.y2) / 2
+              return (
+                <>
+                  {[1, 2].map((end) => (
+                    <circle key={end} data-handle={`p${end}`} cx={end === 1 ? l.x1 : l.x2} cy={end === 1 ? l.y1 : l.y2} r={hs / 1.6} fill="#fff" stroke="#4a6bec" strokeWidth={1.5 / view.zoom} style={{ cursor: 'move' }} />
+                  ))}
+                  <circle
+                    data-handle="curve"
+                    cx={midX}
+                    cy={midY}
+                    r={hs / 1.8}
+                    fill={l.cx !== undefined ? '#4a6bec' : '#fff'}
+                    stroke="#4a6bec"
+                    strokeWidth={1.5 / view.zoom}
+                    style={{ cursor: 'grab' }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      updateSelected((el) => {
+                        if (el.type !== 'arrow' && el.type !== 'line') return el
+                        const { cx: _cx, cy: _cy, ...rest } = el
+                        return rest
+                      })
+                    }}
+                  >
+                    <title>Drag to curve · Double-click to straighten</title>
+                  </circle>
+                </>
+              )
+            })()}
             {marquee && <rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill="#4a6bec14" stroke="#4a6bec" strokeWidth={1 / view.zoom} />}
           </g>
         </svg>
@@ -1008,9 +1326,9 @@ export default function WhiteboardPage(): React.JSX.Element {
           ))}
         </div>
 
-        {/* Style panel */}
+        {/* Style / Properties panel */}
         {showStyle && (
-          <div className="absolute left-3 top-16 w-44 space-y-3 rounded-xl border border-border bg-surface p-3 shadow-lg animate-fade-in">
+          <div className="absolute left-3 top-16 max-h-[calc(100%-6rem)] w-52 space-y-3 overflow-y-auto rounded-xl border border-border bg-surface/95 p-3 shadow-lg backdrop-blur-sm animate-fade-in">
             {(tool === 'sticky' || single?.type === 'sticky') ? (
               <div>
                 <div className="mb-1.5 text-[11px] font-medium text-muted">Note colour</div>
@@ -1048,6 +1366,7 @@ export default function WhiteboardPage(): React.JSX.Element {
               </div>
             ) : (
               <>
+                {/* Colour */}
                 <div>
                   <div className="mb-1.5 text-[11px] font-medium text-muted">Colour</div>
                   <div className="flex flex-wrap gap-1.5">
@@ -1080,48 +1399,441 @@ export default function WhiteboardPage(): React.JSX.Element {
                     </label>
                   </div>
                 </div>
-                {(tool !== 'text' && single?.type !== 'text') && (
-                  <div>
-                    <div className="mb-1.5 text-[11px] font-medium text-muted">Stroke</div>
-                    <div className="flex gap-1">
-                      {WIDTHS.map((w) => {
-                        const current = single && 'width' in single ? single.width : width
-                        return (
-                          <button key={w} type="button" onClick={() => { setWidth(w); updateSelected((el) => ('width' in el ? ({ ...el, width: w } as WbElement) : el)) }} className={cn('flex h-7 flex-1 items-center justify-center rounded-md', current === w ? 'bg-elevated' : 'hover:bg-elevated/60')} aria-label={`Stroke ${w}`}>
-                            <span className="w-6 rounded-full bg-text" style={{ height: Math.max(1.5, w / 1.5) }} />
+
+                {/* Stroke Width */}
+                {(tool !== 'text' && single?.type !== 'text') && (() => {
+                  const currentWidth = single && 'width' in single ? single.width : width
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                        <span>Stroke</span>
+                        <label className="flex items-center gap-0.5 font-mono text-text">
+                          <input
+                            type="number"
+                            min={0.5}
+                            step={0.5}
+                            value={currentWidth}
+                            onChange={(e) => {
+                              const w = Math.max(0.5, Number(e.target.value) || 0.5)
+                              setWidth(w)
+                              updateSelected((el) => ('width' in el ? ({ ...el, width: w } as WbElement) : el))
+                            }}
+                            className="w-11 rounded border border-border bg-elevated/50 px-1 py-0.5 text-right text-[10px] text-text focus:border-indigo-500 focus:outline-none"
+                            aria-label="Stroke width px"
+                          />
+                          <span className="text-[10px] text-muted">px</span>
+                        </label>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={Math.max(48, currentWidth)}
+                        step={0.5}
+                        value={currentWidth}
+                        onChange={(e) => {
+                          const w = Number(e.target.value)
+                          setWidth(w)
+                          updateSelected((el) => ('width' in el ? ({ ...el, width: w } as WbElement) : el))
+                        }}
+                        className="w-full accent-indigo-500"
+                        aria-label="Stroke width"
+                      />
+                      <div className="flex gap-1">
+                        {WIDTHS.map((w) => (
+                          <button key={w} type="button" onClick={() => { setWidth(w); updateSelected((el) => ('width' in el ? ({ ...el, width: w } as WbElement) : el)) }} className={cn('flex h-6 flex-1 items-center justify-center rounded-md', currentWidth === w ? 'bg-elevated' : 'hover:bg-elevated/60')} aria-label={`Stroke ${w}`}>
+                            <span className="w-5 rounded-full bg-text" style={{ height: Math.max(1.5, w / 1.5) }} />
                           </button>
-                        )
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {(['rect', 'ellipse', 'diamond'].includes(tool) || (single && (single.type === 'rect' || single.type === 'ellipse' || single.type === 'diamond'))) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = single && 'fill' in single ? !single.fill : !fill
-                      setFill(next)
-                      updateSelected((el) => ('fill' in el ? { ...el, fill: next } : el))
-                    }}
-                    className={cn('flex h-7 w-full items-center gap-2 rounded-md px-2 text-xs', (single && 'fill' in single ? single.fill : fill) ? 'bg-elevated text-text' : 'text-muted hover:bg-elevated/60')}
-                  >
-                    <PaintBucket className="h-3.5 w-3.5" /> Fill
-                  </button>
-                )}
+                  )
+                })()}
+
+                {/* Stroke Style */}
+                {(tool !== 'text' && single?.type !== 'text') && (() => {
+                  const currentStyle: StrokeStyle = single && 'strokeStyle' in single && single.strokeStyle ? single.strokeStyle : strokeStyle
+                  return (
+                    <div>
+                      <div className="mb-1 text-[11px] font-medium text-muted">Stroke Style</div>
+                      <div className="grid grid-cols-3 gap-1 rounded-md border border-border bg-elevated/40 p-0.5">
+                        {(['solid', 'dashed', 'dotted'] as const).map((st) => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => {
+                              setStrokeStyle(st)
+                              updateSelected((el) => ('width' in el ? ({ ...el, strokeStyle: st } as WbElement) : el))
+                            }}
+                            className={cn(
+                              'rounded py-1 text-[10px] font-medium capitalize transition-colors',
+                              currentStyle === st ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text'
+                            )}
+                          >
+                            {st}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Fill + Fill Colour */}
+                {(['rect', 'ellipse', 'diamond'].includes(tool) || (single && (single.type === 'rect' || single.type === 'ellipse' || single.type === 'diamond'))) && (() => {
+                  const isFilled = single && 'fill' in single ? single.fill : fill
+                  const activeFill = (single && 'fillColor' in single && single.fillColor) || fillColor || activeColor
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !isFilled
+                            setFill(next)
+                            updateSelected((el) => ('fill' in el ? { ...el, fill: next } : el))
+                          }}
+                          className={cn('flex h-7 flex-1 items-center gap-2 rounded-md px-2 text-xs', isFilled ? 'bg-elevated text-text' : 'text-muted hover:bg-elevated/60')}
+                        >
+                          <PaintBucket className="h-3.5 w-3.5" /> Fill
+                        </button>
+                        {isFilled && (
+                          <label className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border" style={{ background: activeFill === INK ? 'rgb(var(--text))' : activeFill }} title="Fill colour">
+                            <input
+                              type="color"
+                              value={activeFill}
+                              onChange={(e) => {
+                                const c = e.target.value
+                                setFillColor(c)
+                                updateSelected((el) => ('fill' in el ? { ...el, fill: true, fillColor: c } : el))
+                              }}
+                              className="absolute inset-0 cursor-pointer opacity-0"
+                              aria-label="Fill colour"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Corner Radius (rect) */}
+                {(tool === 'rect' || single?.type === 'rect') && (() => {
+                  const base = single?.type === 'rect' ? (single.rx ?? 8) : cornerRadius
+                  const corners: [number, number, number, number] =
+                    single?.type === 'rect' && single.corners ? single.corners : [base, base, base, base]
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                        <span>Radius</span>
+                        <label className="flex items-center gap-0.5 font-mono text-text">
+                          <input
+                            type="number"
+                            min={0}
+                            value={Math.round(base)}
+                            onChange={(e) => {
+                              const v = Math.max(0, Number(e.target.value) || 0)
+                              setCornerRadius(v)
+                              updateSelected((el) => (el.type === 'rect' ? { ...el, rx: v, corners: [v, v, v, v] } : el))
+                            }}
+                            className="w-11 rounded border border-border bg-elevated/50 px-1 py-0.5 text-right text-[10px] text-text focus:border-indigo-500 focus:outline-none"
+                            aria-label="Corner radius px"
+                          />
+                          <span className="text-[10px] text-muted">px</span>
+                        </label>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(200, base)}
+                        step={2}
+                        value={base}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          setCornerRadius(v)
+                          updateSelected((el) => (el.type === 'rect' ? { ...el, rx: v, corners: [v, v, v, v] } : el))
+                        }}
+                        className="w-full accent-indigo-500"
+                        aria-label="Corner radius"
+                      />
+                      {single?.type === 'rect' && (
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['TL', 'TR', 'BR', 'BL'] as const).map((lbl, idx) => (
+                            <label key={lbl} className="flex flex-col items-center gap-0.5 text-[9px] text-muted">
+                              <span>{lbl}</span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={Math.round(corners[idx])}
+                                onChange={(e) => {
+                                  const val = Math.max(0, Number(e.target.value) || 0)
+                                  updateSelected((el) => {
+                                    if (el.type !== 'rect') return el
+                                    const next: [number, number, number, number] = el.corners ? [...el.corners] : [base, base, base, base]
+                                    next[idx] = val
+                                    return { ...el, corners: next }
+                                  })
+                                }}
+                                className="h-6 w-full rounded border border-border bg-elevated/50 px-1 text-center font-mono text-[10px] text-text focus:border-indigo-500 focus:outline-none"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* 3D Depth & Angle (shapes) */}
+                {(['rect', 'ellipse', 'diamond'].includes(tool) || (single && (single.type === 'rect' || single.type === 'ellipse' || single.type === 'diamond'))) && (() => {
+                  const d = single && 'depth' in single ? (single.depth ?? 0) : depth
+                  const ang = single && 'depthAngle' in single ? (single.depthAngle ?? 35) : 35
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                        <span>3D Depth</span>
+                        <label className="flex items-center gap-0.5 font-mono text-text">
+                          <input
+                            type="number"
+                            min={0}
+                            value={Math.round(d)}
+                            onChange={(e) => {
+                              const v = Math.max(0, Number(e.target.value) || 0)
+                              setDepth(v)
+                              updateSelected((el) => (el.type === 'rect' || el.type === 'ellipse' || el.type === 'diamond' ? { ...el, depth: v } : el))
+                            }}
+                            className="w-11 rounded border border-border bg-elevated/50 px-1 py-0.5 text-right text-[10px] text-text focus:border-indigo-500 focus:outline-none"
+                            aria-label="3D depth px"
+                          />
+                          <span className="text-[10px] text-muted">px</span>
+                        </label>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(120, d)}
+                        step={2}
+                        value={d}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          setDepth(v)
+                          updateSelected((el) => (el.type === 'rect' || el.type === 'ellipse' || el.type === 'diamond' ? { ...el, depth: v } : el))
+                        }}
+                        className="w-full accent-indigo-500"
+                        aria-label="3D depth"
+                      />
+                      {d > 0 && single && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                            <span>3D Angle</span>
+                            <span className="font-mono tabular-nums text-text">{Math.round(ang)}°</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={360}
+                            step={5}
+                            value={ang}
+                            onChange={(e) => {
+                              const v = Number(e.target.value)
+                              updateSelected((el) => (el.type === 'rect' || el.type === 'ellipse' || el.type === 'diamond' ? { ...el, depthAngle: v } : el))
+                            }}
+                            className="w-full accent-indigo-500"
+                            aria-label="3D angle"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Rotation (when selected) */}
+                {single && (() => {
+                  const rot = single.rotation ?? 0
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                        <span>Rotate</span>
+                        <button
+                          type="button"
+                          onClick={() => updateSelected((el) => ({ ...el, rotation: 0 }))}
+                          className="font-mono tabular-nums text-text hover:text-indigo-400"
+                          title="Reset rotation"
+                        >
+                          {Math.round(rot)}°
+                        </button>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={360}
+                        step={5}
+                        value={((rot % 360) + 360) % 360}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          updateSelected((el) => ({ ...el, rotation: v }))
+                        }}
+                        className="w-full accent-indigo-500"
+                        aria-label="Rotation"
+                      />
+                    </div>
+                  )
+                })()}
+
+                {/* Font Size (text) */}
+                {(tool === 'text' || single?.type === 'text') && (() => {
+                  const sz = single?.type === 'text' ? single.size : fontSize
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                        <span>Font Size</span>
+                        <label className="flex items-center gap-0.5 font-mono text-text">
+                          <input
+                            type="number"
+                            min={1}
+                            value={Math.round(sz)}
+                            onChange={(e) => {
+                              const v = Math.max(1, Number(e.target.value) || 1)
+                              setFontSize(v)
+                              updateSelected((el) => (el.type === 'text' ? { ...el, size: v } : el))
+                            }}
+                            className="w-11 rounded border border-border bg-elevated/50 px-1 py-0.5 text-right text-[10px] text-text focus:border-indigo-500 focus:outline-none"
+                            aria-label="Font size px"
+                          />
+                          <span className="text-[10px] text-muted">px</span>
+                        </label>
+                      </div>
+                      <input
+                        type="range"
+                        min={8}
+                        max={Math.max(120, sz)}
+                        step={2}
+                        value={sz}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          setFontSize(v)
+                          updateSelected((el) => (el.type === 'text' ? { ...el, size: v } : el))
+                        }}
+                        className="w-full accent-indigo-500"
+                        aria-label="Font size"
+                      />
+                    </div>
+                  )
+                })()}
               </>
             )}
+
+            {/* Animation (when selected) */}
+            {single && (() => {
+              const anim: ElementAnimation = single.animation ?? 'none'
+              const spd = single.animationSpeed ?? 1
+              return (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-medium text-muted">Animation</div>
+                  <div className="grid grid-cols-5 gap-0.5 rounded-md border border-border bg-elevated/40 p-0.5">
+                    {(['none', 'pulse', 'float', 'spin', 'bounce'] as const).map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        onClick={() => updateSelected((el) => ({ ...el, animation: a }))}
+                        className={cn(
+                          'rounded py-1 text-[9px] font-medium capitalize transition-colors',
+                          anim === a ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text'
+                        )}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                  {anim !== 'none' && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between text-[10px] text-muted">
+                        <span>Speed</span>
+                        <span className="font-mono text-text">{spd.toFixed(1)}×</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={3}
+                        step={0.25}
+                        value={spd}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          updateSelected((el) => ({ ...el, animationSpeed: v }))
+                        }}
+                        className="w-full accent-indigo-500"
+                        aria-label="Animation speed"
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Opacity (all elements) */}
+            {(() => {
+              const op = single?.opacity ?? opacity
+              return (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                    <span>Opacity</span>
+                    <span className="font-mono tabular-nums text-text">{Math.round(op * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    value={op}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setOpacity(v)
+                      updateSelected((el) => ({ ...el, opacity: v }))
+                    }}
+                    className="w-full accent-indigo-500"
+                    aria-label="Opacity"
+                  />
+                </div>
+              )
+            })()}
+
+            {/* Layer & Edit actions */}
             {selectedEls.length > 0 && (
-              <div className="flex gap-1 border-t border-border pt-2">
-                <button type="button" onClick={() => duplicateSelected()} className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md text-xs text-muted hover:bg-elevated hover:text-text" title="Duplicate (Ctrl+D)">
+              <div className="grid grid-cols-4 gap-1 border-t border-border pt-2">
+                <button type="button" onClick={bringToFront} className="flex h-7 items-center justify-center rounded-md text-xs text-muted hover:bg-elevated hover:text-text" title="Bring to front">
+                  <ArrowUpToLine className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={sendToBack} className="flex h-7 items-center justify-center rounded-md text-xs text-muted hover:bg-elevated hover:text-text" title="Send to back">
+                  <ArrowDownToLine className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => duplicateSelected()} className="flex h-7 items-center justify-center rounded-md text-xs text-muted hover:bg-elevated hover:text-text" title="Duplicate (Ctrl+D)">
                   <CopyPlus className="h-3.5 w-3.5" />
                 </button>
-                <button type="button" onClick={deleteSelected} className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md text-xs text-muted hover:bg-rose-500/10 hover:text-rose-500" title="Delete (Del)">
+                <button type="button" onClick={deleteSelected} className="flex h-7 items-center justify-center rounded-md text-xs text-muted hover:bg-rose-500/10 hover:text-rose-500" title="Delete (Del)">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             )}
           </div>
         )}
+
+        {/* Layers & Layout panel */}
+        <WbLayersPanel
+          open={layersOpen}
+          onToggleOpen={() => setLayersOpen((o) => !o)}
+          elements={elements}
+          selected={selected}
+          snapToGrid={snapToGrid}
+          onToggleSnap={() => setSnapToGrid((s) => !s)}
+          onSelect={(ids) => {
+            setSelected(ids)
+            setTool('select')
+          }}
+          onToggleHidden={toggleHidden}
+          onToggleLocked={toggleLocked}
+          onMoveLayer={moveLayer}
+          onGroup={groupSelected}
+          onUngroup={ungroupSelected}
+          onAlign={alignSelected}
+        />
 
         {/* Zoom + history */}
         <div className="absolute bottom-3 left-3 flex items-center gap-1">
@@ -1134,6 +1846,48 @@ export default function WhiteboardPage(): React.JSX.Element {
           <div className="flex items-center rounded-lg border border-border bg-surface shadow-sm">
             <button type="button" onClick={undo} disabled={!past.length} className="p-1.5 text-muted hover:text-text disabled:opacity-30" title="Undo (Ctrl Z)" aria-label="Undo"><Undo2 className="h-4 w-4" /></button>
             <button type="button" onClick={redo} disabled={!future.length} className="p-1.5 text-muted hover:text-text disabled:opacity-30" title="Redo (Ctrl Shift Z)" aria-label="Redo"><Redo2 className="h-4 w-4" /></button>
+          </div>
+          <div className="relative flex items-center rounded-lg border border-border bg-surface shadow-sm">
+            <button
+              type="button"
+              onClick={() => setView3D((v) => !v)}
+              className={cn('flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors', view3D ? 'bg-indigo-600 text-white' : 'text-muted hover:text-text')}
+              title="Toggle 3D Perspective View"
+            >
+              <Box className="h-3.5 w-3.5" />
+              <span>3D</span>
+            </button>
+            {view3D && (
+              <div className="absolute bottom-10 left-0 z-20 w-48 space-y-2 rounded-xl border border-border bg-surface/95 p-2.5 text-[11px] shadow-xl backdrop-blur-sm">
+                <div className="flex items-center justify-between font-medium text-text">
+                  <span>3D View</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTiltX(24)
+                      setTiltY(-18)
+                    }}
+                    className="text-[10px] text-indigo-400 hover:underline"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <label className="block space-y-0.5 text-muted">
+                  <div className="flex justify-between">
+                    <span>Tilt X</span>
+                    <span className="font-mono text-text">{tiltX}°</span>
+                  </div>
+                  <input type="range" min={-55} max={55} value={tiltX} onChange={(e) => setTiltX(Number(e.target.value))} className="w-full accent-indigo-500" />
+                </label>
+                <label className="block space-y-0.5 text-muted">
+                  <div className="flex justify-between">
+                    <span>Tilt Y</span>
+                    <span className="font-mono text-text">{tiltY}°</span>
+                  </div>
+                  <input type="range" min={-55} max={55} value={tiltY} onChange={(e) => setTiltY(Number(e.target.value))} className="w-full accent-indigo-500" />
+                </label>
+              </div>
+            )}
           </div>
         </div>
 

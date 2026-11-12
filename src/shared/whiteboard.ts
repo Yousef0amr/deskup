@@ -2,15 +2,32 @@
 
 export type ShapeKind = 'rect' | 'ellipse' | 'diamond'
 export type LineKind = 'arrow' | 'line'
+export type StrokeStyle = 'solid' | 'dashed' | 'dotted'
+export type ElementAnimation = 'none' | 'pulse' | 'float' | 'spin' | 'bounce'
 
 interface Base {
   id: string
   color: string
+  /** Element opacity in (0, 1], defaults to 1. */
+  opacity?: number
+  /** Rotation in degrees around element center. */
+  rotation?: number
+  /** Optional SVG animation preset. */
+  animation?: ElementAnimation
+  /** Animation speed multiplier (defaults to 1). */
+  animationSpeed?: number
+  /** Shared ID linking grouped elements. */
+  groupId?: string
+  /** Locked elements cannot be moved or erased on canvas. */
+  locked?: boolean
+  /** Hidden elements are omitted from rendering. */
+  hidden?: boolean
 }
 export interface PathElement extends Base {
   type: 'path'
   points: [number, number][]
   width: number
+  strokeStyle?: StrokeStyle
 }
 export interface ShapeElement extends Base {
   type: ShapeKind
@@ -20,6 +37,16 @@ export interface ShapeElement extends Base {
   h: number
   width: number
   fill: boolean
+  fillColor?: string
+  strokeStyle?: StrokeStyle
+  /** Corner radius for rectangles (defaults to 8). */
+  rx?: number
+  /** Independent [TL, TR, BR, BL] corner radii for rectangles. */
+  corners?: [number, number, number, number]
+  /** 3D extrusion depth in px (0 = flat). */
+  depth?: number
+  /** 3D extrusion angle in degrees (defaults to 35). */
+  depthAngle?: number
   /** Optional label centred in the shape. */
   text?: string
 }
@@ -29,7 +56,11 @@ export interface LineElement extends Base {
   y1: number
   x2: number
   y2: number
+  /** Optional quadratic Bezier control point for curved lines/arrows. */
+  cx?: number
+  cy?: number
   width: number
+  strokeStyle?: StrokeStyle
 }
 export interface TextElement extends Base {
   type: 'text'
@@ -94,8 +125,13 @@ export function elementBounds(el: WbElement): Bounds {
       return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
     }
     case 'arrow':
-    case 'line':
-      return { x: Math.min(el.x1, el.x2), y: Math.min(el.y1, el.y2), w: Math.abs(el.x2 - el.x1), h: Math.abs(el.y2 - el.y1) }
+    case 'line': {
+      const xs = el.cx !== undefined ? [el.x1, el.x2, el.cx] : [el.x1, el.x2]
+      const ys = el.cy !== undefined ? [el.y1, el.y2, el.cy] : [el.y1, el.y2]
+      const x = Math.min(...xs)
+      const y = Math.min(...ys)
+      return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+    }
     case 'text': {
       const lines = el.text.split('\n')
       const longest = Math.max(1, ...lines.map((l) => l.length))
@@ -131,7 +167,14 @@ export function translateElement<T extends WbElement>(el: T, dx: number, dy: num
       return { ...el, points: el.points.map(([x, y]) => [x + dx, y + dy]) } as T
     case 'arrow':
     case 'line':
-      return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy } as T
+      return {
+        ...el,
+        x1: el.x1 + dx,
+        y1: el.y1 + dy,
+        x2: el.x2 + dx,
+        y2: el.y2 + dy,
+        ...(el.cx !== undefined && el.cy !== undefined ? { cx: el.cx + dx, cy: el.cy + dy } : {})
+      } as T
     default:
       return { ...el, x: (el as { x: number }).x + dx, y: (el as { y: number }).y + dy } as T
   }
@@ -190,13 +233,42 @@ function text(v: unknown, what: string): string {
   return v.slice(0, LIMITS.text)
 }
 function strokeWidth(v: unknown): number {
-  return Math.min(40, Math.max(0.5, num(v, 'stroke width')))
+  return Math.max(0.5, num(v, 'stroke width'))
+}
+function optOpacity(v: unknown): number | undefined {
+  if (v === undefined) return undefined
+  return Math.min(1, Math.max(0.05, num(v, 'opacity')))
+}
+function optStrokeStyle(v: unknown): StrokeStyle | undefined {
+  if (v === undefined) return undefined
+  if (v === 'solid' || v === 'dashed' || v === 'dotted') return v
+  throw new Error('Invalid stroke style')
+}
+function optAnimation(v: unknown): ElementAnimation | undefined {
+  if (v === undefined) return undefined
+  if (v === 'none' || v === 'pulse' || v === 'float' || v === 'spin' || v === 'bounce') return v
+  throw new Error('Invalid animation')
 }
 
 function validateElement(value: unknown): WbElement {
   const r = obj(value, 'element')
   if (typeof r.id !== 'string' || !r.id) throw new Error('Element ID is required')
-  const base = { id: r.id.slice(0, 64), color: color(r.color) }
+  const opacity = optOpacity(r.opacity)
+  const rotation = r.rotation !== undefined ? Math.max(-360, Math.min(360, num(r.rotation, 'rotation'))) : undefined
+  const animation = optAnimation(r.animation)
+  const animationSpeed = r.animationSpeed !== undefined ? Math.max(0.25, Math.min(5, num(r.animationSpeed, 'animation speed'))) : undefined
+  const groupId = typeof r.groupId === 'string' && r.groupId ? r.groupId.slice(0, 64) : undefined
+  const base = {
+    id: r.id.slice(0, 64),
+    color: color(r.color),
+    ...(opacity !== undefined ? { opacity } : {}),
+    ...(rotation !== undefined ? { rotation } : {}),
+    ...(animation && animation !== 'none' ? { animation } : {}),
+    ...(animationSpeed !== undefined ? { animationSpeed } : {}),
+    ...(groupId ? { groupId } : {}),
+    ...(r.locked === true ? { locked: true } : {}),
+    ...(r.hidden === true ? { hidden: true } : {})
+  }
   switch (r.type) {
     case 'path': {
       if (!Array.isArray(r.points) || r.points.length < 1) throw new Error('Invalid path')
@@ -204,11 +276,21 @@ function validateElement(value: unknown): WbElement {
         if (!Array.isArray(p) || p.length !== 2) throw new Error('Invalid path point')
         return [num(p[0], 'x'), num(p[1], 'y')]
       })
-      return { ...base, type: 'path', points, width: strokeWidth(r.width) }
+      const strokeStyle = optStrokeStyle(r.strokeStyle)
+      return { ...base, type: 'path', points, width: strokeWidth(r.width), ...(strokeStyle ? { strokeStyle } : {}) }
     }
     case 'rect':
     case 'ellipse':
-    case 'diamond':
+    case 'diamond': {
+      const strokeStyle = optStrokeStyle(r.strokeStyle)
+      const fillColor = r.fillColor !== undefined ? color(r.fillColor) : undefined
+      const rx = r.rx !== undefined ? Math.max(0, num(r.rx, 'corner radius')) : undefined
+      const corners =
+        Array.isArray(r.corners) && r.corners.length === 4
+          ? (r.corners.map((c) => Math.max(0, num(c, 'corner radius'))) as [number, number, number, number])
+          : undefined
+      const depth = r.depth !== undefined ? Math.max(0, num(r.depth, '3D depth')) : undefined
+      const depthAngle = r.depthAngle !== undefined ? Math.max(0, Math.min(360, num(r.depthAngle, '3D angle'))) : undefined
       return {
         ...base,
         type: r.type,
@@ -218,13 +300,33 @@ function validateElement(value: unknown): WbElement {
         h: Math.max(0, num(r.h, 'height')),
         width: strokeWidth(r.width),
         fill: r.fill === true,
+        ...(fillColor ? { fillColor } : {}),
+        ...(strokeStyle ? { strokeStyle } : {}),
+        ...(rx !== undefined ? { rx } : {}),
+        ...(corners ? { corners } : {}),
+        ...(depth !== undefined ? { depth } : {}),
+        ...(depthAngle !== undefined ? { depthAngle } : {}),
         ...(r.text !== undefined ? { text: text(r.text, 'shape text') } : {})
       }
+    }
     case 'arrow':
-    case 'line':
-      return { ...base, type: r.type, x1: num(r.x1, 'x1'), y1: num(r.y1, 'y1'), x2: num(r.x2, 'x2'), y2: num(r.y2, 'y2'), width: strokeWidth(r.width) }
+    case 'line': {
+      const strokeStyle = optStrokeStyle(r.strokeStyle)
+      const hasCurve = r.cx !== undefined && r.cy !== undefined
+      return {
+        ...base,
+        type: r.type,
+        x1: num(r.x1, 'x1'),
+        y1: num(r.y1, 'y1'),
+        x2: num(r.x2, 'x2'),
+        y2: num(r.y2, 'y2'),
+        ...(hasCurve ? { cx: num(r.cx, 'cx'), cy: num(r.cy, 'cy') } : {}),
+        width: strokeWidth(r.width),
+        ...(strokeStyle ? { strokeStyle } : {})
+      }
+    }
     case 'text':
-      return { ...base, type: 'text', x: num(r.x, 'x'), y: num(r.y, 'y'), text: text(r.text, 'text'), size: Math.min(160, Math.max(8, num(r.size, 'font size'))) }
+      return { ...base, type: 'text', x: num(r.x, 'x'), y: num(r.y, 'y'), text: text(r.text, 'text'), size: Math.max(1, num(r.size, 'font size')) }
     case 'sticky':
       return { ...base, type: 'sticky', x: num(r.x, 'x'), y: num(r.y, 'y'), w: Math.max(40, num(r.w, 'width')), h: Math.max(40, num(r.h, 'height')), text: text(r.text, 'sticky text') }
     default:
