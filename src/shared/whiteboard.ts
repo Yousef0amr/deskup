@@ -77,7 +77,18 @@ export interface StickyElement extends Base {
   h: number
   text: string
 }
-export type WbElement = PathElement | ShapeElement | LineElement | TextElement | StickyElement
+export interface ImageElement extends Base {
+  type: 'image'
+  x: number
+  y: number
+  w: number
+  h: number
+  /** Data URL (data:image/...;base64,...) for any image format. */
+  src: string
+  /** Optional corner radius in px. */
+  rx?: number
+}
+export type WbElement = PathElement | ShapeElement | LineElement | TextElement | StickyElement | ImageElement
 
 export interface Whiteboard {
   id: string
@@ -329,6 +340,22 @@ function validateElement(value: unknown): WbElement {
       return { ...base, type: 'text', x: num(r.x, 'x'), y: num(r.y, 'y'), text: text(r.text, 'text'), size: Math.max(1, num(r.size, 'font size')) }
     case 'sticky':
       return { ...base, type: 'sticky', x: num(r.x, 'x'), y: num(r.y, 'y'), w: Math.max(40, num(r.w, 'width')), h: Math.max(40, num(r.h, 'height')), text: text(r.text, 'sticky text') }
+    case 'image': {
+      if (typeof r.src !== 'string' || !/^data:image\/[a-z0-9.+-]+;base64,/i.test(r.src) || r.src.length > 20_000_000) {
+        throw new Error('Invalid image data URL')
+      }
+      const rx = r.rx !== undefined ? Math.max(0, num(r.rx, 'corner radius')) : undefined
+      return {
+        ...base,
+        type: 'image',
+        x: num(r.x, 'x'),
+        y: num(r.y, 'y'),
+        w: Math.max(8, num(r.w, 'width')),
+        h: Math.max(8, num(r.h, 'height')),
+        src: r.src,
+        ...(rx !== undefined ? { rx } : {})
+      }
+    }
     default:
       throw new Error('Unknown element type')
   }

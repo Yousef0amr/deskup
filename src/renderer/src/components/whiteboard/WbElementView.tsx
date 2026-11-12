@@ -299,6 +299,32 @@ function WbElementView({ el, hideText }: Props): React.JSX.Element | null {
         </g>
       )
     }
+    case 'image': {
+      const rx = el.rx ?? 0
+      const clipId = rx > 0 ? `wb-clip-${el.id}` : undefined
+      return (
+        <g data-id={el.id} opacity={opacity} transform={rotateTransform}>
+          <AnimatedGroup el={el}>
+            {clipId && (
+              <defs>
+                <clipPath id={clipId}>
+                  <rect x={el.x} y={el.y} width={el.w} height={el.h} rx={rx} />
+                </clipPath>
+              </defs>
+            )}
+            <image
+              href={el.src}
+              x={el.x}
+              y={el.y}
+              width={el.w}
+              height={el.h}
+              preserveAspectRatio="none"
+              clipPath={clipId ? `url(#${clipId})` : undefined}
+            />
+          </AnimatedGroup>
+        </g>
+      )
+    }
   }
 }
 

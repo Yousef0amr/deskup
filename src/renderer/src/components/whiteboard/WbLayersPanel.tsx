@@ -26,7 +26,8 @@ import {
   ArrowUpRight,
   Minus,
   Type,
-  StickyNote
+  StickyNote,
+  Image as ImageIcon
 } from 'lucide-react'
 import type { WbElement } from '../../../../shared/whiteboard'
 import { cn } from '../../lib/utils'
@@ -59,6 +60,7 @@ function elementIcon(el: WbElement) {
     case 'line': return Minus
     case 'text': return Type
     case 'sticky': return StickyNote
+    case 'image': return ImageIcon
   }
 }
 
@@ -72,7 +74,8 @@ function elementLabel(el: WbElement, index: number): string {
     arrow: 'Arrow',
     line: 'Line',
     text: 'Text',
-    sticky: 'Sticky'
+    sticky: 'Sticky',
+    image: 'Image'
   }
   return `${names[el.type]} ${index + 1}`
 }

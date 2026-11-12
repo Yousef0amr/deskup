@@ -97,8 +97,8 @@ const isTyping = (t: EventTarget | null) => {
   const el = t as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
 }
-const isBox = (el: WbElement): el is ShapeElement | Extract<WbElement, { type: 'sticky' }> =>
-  el.type === 'rect' || el.type === 'ellipse' || el.type === 'diamond' || el.type === 'sticky'
+const isBox = (el: WbElement): el is ShapeElement | Extract<WbElement, { type: 'sticky' | 'image' }> =>
+  el.type === 'rect' || el.type === 'ellipse' || el.type === 'diamond' || el.type === 'sticky' || el.type === 'image'
 
 export default function WhiteboardPage(): React.JSX.Element {
   const [boards, setBoards] = useState<Whiteboard[] | null>(null)
@@ -145,6 +145,7 @@ export default function WhiteboardPage(): React.JSX.Element {
   const svgRef = useRef<SVGSVGElement>(null)
   const contentRef = useRef<SVGGElement>(null)
   const svgFileInputRef = useRef<HTMLInputElement>(null)
+  const imageFileInputRef = useRef<HTMLInputElement>(null)
   const ioMenuRef = useRef<HTMLDivElement>(null)
   const interaction = useRef<Interaction | null>(null)
   const elementsRef = useRef<WbElement[]>([])
@@ -951,9 +952,73 @@ export default function WhiteboardPage(): React.JSX.Element {
       .catch(() => toast('Could not read SVG file', 'error'))
   }
 
+  const insertImageFiles = useCallback(
+    async (files: FileList | File[], dropClient?: { x: number; y: number }) => {
+      const list = Array.from(files).filter((f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg|avif|ico)$/i.test(f.name))
+      if (list.length === 0) return
+
+      const readAsDataUrl = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('Could not read image'))
+          reader.readAsDataURL(file)
+        })
+
+      const rect = svgRef.current?.getBoundingClientRect()
+      const v = viewRef.current
+      const baseWorldX = dropClient && rect ? (dropClient.x - rect.left - v.x) / v.zoom : rect ? (rect.width / 2 - v.x) / v.zoom : 0
+      const baseWorldY = dropClient && rect ? (dropClient.y - rect.top - v.y) / v.zoom : rect ? (rect.height / 2 - v.y) / v.zoom : 0
+
+      const added: WbElement[] = []
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i]
+        try {
+          const src = await readAsDataUrl(file)
+          const img = new Image()
+          img.src = src
+          await img.decode()
+          const natW = Math.max(24, img.naturalWidth || 320)
+          const natH = Math.max(24, img.naturalHeight || 240)
+          const scale = Math.min(1, 520 / Math.max(natW, natH))
+          const w = Math.round(natW * scale)
+          const h = Math.round(natH * scale)
+          added.push({
+            id: newId(),
+            type: 'image',
+            color: INK,
+            x: baseWorldX - w / 2 + i * 24,
+            y: baseWorldY - h / 2 + i * 24,
+            w,
+            h,
+            src
+          })
+        } catch {
+          toast(`Could not load ${file.name}`, 'error')
+        }
+      }
+      if (added.length > 0) {
+        commit([...elementsRef.current, ...added])
+        setSelected(new Set(added.map((e) => e.id)))
+        setTool('select')
+        toast(`Added ${added.length} image${added.length === 1 ? '' : 's'}`)
+      }
+    },
+    [commit, toast]
+  )
+
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       if (isTyping(e.target) || importModalOpen) return
+      const imageFiles = Array.from(e.clipboardData?.items ?? [])
+        .filter((item) => item.type.startsWith('image/'))
+        .map((item) => item.getAsFile())
+        .filter((f): f is File => !!f)
+      if (imageFiles.length > 0) {
+        e.preventDefault()
+        void insertImageFiles(imageFiles)
+        return
+      }
       const text = e.clipboardData?.getData('text/plain')
       if (!text || !text.includes('<svg')) return
       e.preventDefault()
@@ -961,7 +1026,7 @@ export default function WhiteboardPage(): React.JSX.Element {
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [importModalOpen, insertSvgToBoard])
+  }, [importModalOpen, insertImageFiles, insertSvgToBoard])
 
   useEffect(() => {
     if (!ioMenuOpen) return
@@ -1073,6 +1138,17 @@ export default function WhiteboardPage(): React.JSX.Element {
                 role="menuitem"
                 onClick={() => {
                   setIoMenuOpen(false)
+                  imageFileInputRef.current?.click()
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-text hover:bg-elevated"
+              >
+                <ImageIcon className="h-3.5 w-3.5 text-muted" /> Import Image…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIoMenuOpen(false)
                   setImportSvgText('')
                   setImportModalOpen(true)
                 }}
@@ -1132,7 +1208,29 @@ export default function WhiteboardPage(): React.JSX.Element {
       </header>
 
       {/* Canvas */}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface">
+      <input
+        ref={imageFileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => {
+          if (e.target.files?.length) void insertImageFiles(e.target.files)
+          e.target.value = ''
+        }}
+        className="hidden"
+      />
+      <div
+        className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface"
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.files?.length) {
+            e.preventDefault()
+            void insertImageFiles(e.dataTransfer.files, { x: e.clientX, y: e.clientY })
+          }
+        }}
+      >
         {/* Dot grid follows pan/zoom */}
         <div
           className="pointer-events-none absolute inset-0"
@@ -1515,9 +1613,9 @@ export default function WhiteboardPage(): React.JSX.Element {
                   )
                 })()}
 
-                {/* Corner Radius (rect) */}
-                {(tool === 'rect' || single?.type === 'rect') && (() => {
-                  const base = single?.type === 'rect' ? (single.rx ?? 8) : cornerRadius
+                {/* Corner Radius (rect / image) */}
+                {(tool === 'rect' || single?.type === 'rect' || single?.type === 'image') && (() => {
+                  const base = single?.type === 'rect' || single?.type === 'image' ? (single.rx ?? (single.type === 'rect' ? 8 : 0)) : cornerRadius
                   const corners: [number, number, number, number] =
                     single?.type === 'rect' && single.corners ? single.corners : [base, base, base, base]
                   return (
@@ -1532,7 +1630,9 @@ export default function WhiteboardPage(): React.JSX.Element {
                             onChange={(e) => {
                               const v = Math.max(0, Number(e.target.value) || 0)
                               setCornerRadius(v)
-                              updateSelected((el) => (el.type === 'rect' ? { ...el, rx: v, corners: [v, v, v, v] } : el))
+                              updateSelected((el) =>
+                                el.type === 'rect' ? { ...el, rx: v, corners: [v, v, v, v] } : el.type === 'image' ? { ...el, rx: v } : el
+                              )
                             }}
                             className="w-11 rounded border border-border bg-elevated/50 px-1 py-0.5 text-right text-[10px] text-text focus:border-indigo-500 focus:outline-none"
                             aria-label="Corner radius px"
@@ -1549,7 +1649,9 @@ export default function WhiteboardPage(): React.JSX.Element {
                         onChange={(e) => {
                           const v = Number(e.target.value)
                           setCornerRadius(v)
-                          updateSelected((el) => (el.type === 'rect' ? { ...el, rx: v, corners: [v, v, v, v] } : el))
+                          updateSelected((el) =>
+                            el.type === 'rect' ? { ...el, rx: v, corners: [v, v, v, v] } : el.type === 'image' ? { ...el, rx: v } : el
+                          )
                         }}
                         className="w-full accent-indigo-500"
                         aria-label="Corner radius"
