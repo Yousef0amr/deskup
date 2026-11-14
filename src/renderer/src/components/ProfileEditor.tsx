@@ -14,12 +14,20 @@ interface ProfileEditorProps {
 
 const EMOJI_PRESETS = ['💼', '💻', '📚', '🎧', '🚀', '🎯', '☕', '🎮', '🎨', '📝', '⚡', '🛠️']
 const COLOR_PRESETS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#64748b']
+const createProfileItem = (type: ItemType, target = '', label = ''): ProfileItem => ({
+  id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
+  type,
+  target,
+  label
+})
 
 export default function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps): React.JSX.Element {
   const [name, setName] = useState(profile?.name || '')
   const [icon, setIcon] = useState(profile?.icon || '💼')
   const [color, setColor] = useState(profile?.color || '#6366f1')
   const [launchDelayMs, setLaunchDelayMs] = useState(profile?.launchDelayMs ?? 300)
+  const [autoLaunch, setAutoLaunch] = useState(Boolean(profile?.autoLaunch))
+  const [alsoEnableLogin, setAlsoEnableLogin] = useState(true)
   const [items, setItems] = useState<ProfileItem[]>(profile?.items || [])
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -28,11 +36,9 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
   const [manualEditItemIds, setManualEditItemIds] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
   const handleAddItem = (type: ItemType) => {
@@ -41,13 +47,7 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
       setIsAppPickerOpen(true)
       return
     }
-    const newItem: ProfileItem = {
-      id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
-      type,
-      target: '',
-      label: ''
-    }
-    setItems((prev) => [...prev, newItem])
+    setItems((prev) => [...prev, createProfileItem(type)])
   }
 
   const handleUpdateItem = (id: string, patch: Partial<ProfileItem>) => {
@@ -62,13 +62,7 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
     if (pickingItemId) {
       handleUpdateItem(pickingItemId, { target: app.path, label: app.name })
     } else {
-      const newItem: ProfileItem = {
-        id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6),
-        type: 'app',
-        label: app.name,
-        target: app.path
-      }
-      setItems((prev) => [...prev, newItem])
+      setItems((prev) => [...prev, createProfileItem('app', app.path, app.name)])
     }
     setIsAppPickerOpen(false)
     setPickingItemId(null)
@@ -84,10 +78,7 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
         if (targetItemId) {
           handleUpdateItem(targetItemId, { target: path, label: cleanName })
         } else {
-          setItems((prev) => [
-            ...prev,
-            { id: 'item_' + Date.now() + Math.random().toString(36).substring(2, 6), type: 'app', label: cleanName, target: path }
-          ])
+          setItems((prev) => [...prev, createProfileItem('app', path, cleanName)])
         }
       }
     } catch (err) {
@@ -132,9 +123,14 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
         icon,
         color,
         launchDelayMs,
+        autoLaunch,
         items
       }
       await onSave(updatedProfile)
+      if (autoLaunch && alsoEnableLogin) {
+        const s = await window.deskup.settings.get().catch(() => null)
+        if (s && !s.launchAtLogin) await window.deskup.settings.update({ launchAtLogin: true })
+      }
       onClose()
     } catch (err) {
       setErrorMessage((err as Error).message || 'Failed to save profile')
@@ -169,12 +165,16 @@ export default function ProfileEditor({ profile, onSave, onClose }: ProfileEdito
             icon={icon}
             color={color}
             launchDelayMs={launchDelayMs}
+            autoLaunch={autoLaunch}
+            alsoEnableLogin={alsoEnableLogin}
             emojiPresets={EMOJI_PRESETS}
             colorPresets={COLOR_PRESETS}
             onNameChange={setName}
             onIconChange={setIcon}
             onColorChange={setColor}
             onDelayChange={setLaunchDelayMs}
+            onAutoLaunchChange={setAutoLaunch}
+            onAlsoEnableLoginChange={setAlsoEnableLogin}
           />
 
           {/* Items Section */}

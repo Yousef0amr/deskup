@@ -63,6 +63,7 @@ export default function ProfilesPage(): React.JSX.Element {
     const duplicated: Profile = {
       ...profile,
       id: 'prof_' + Date.now(),
+      autoLaunch: false,
       name: `${profile.name} (Copy)`,
       items: profile.items.map((it) => ({
         ...it,

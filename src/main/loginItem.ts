@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { AUTOSTART_ARG } from '../shared/profiles'
 
 /**
  * Register (or remove) Deskup as a login item.
@@ -10,7 +11,12 @@ import { app } from 'electron'
 export function applyLoginItem(openAtLogin: boolean): void {
   try {
     if (app.isPackaged) {
-      app.setLoginItemSettings({ openAtLogin, name: 'Deskup' })
+      if (openAtLogin) {
+        app.setLoginItemSettings({ openAtLogin: true, name: 'Deskup', args: [AUTOSTART_ARG] })
+      } else {
+        app.setLoginItemSettings({ openAtLogin: false, name: 'Deskup', args: [AUTOSTART_ARG] })
+        app.setLoginItemSettings({ openAtLogin: false, name: 'Deskup' })
+      }
       return
     }
     // Remove entries older dev runs may have left: the project-path one and the

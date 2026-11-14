@@ -11,12 +11,25 @@ import { disposeSnipper, prewarmSnipWindow, registerSnipIpc } from './snipper'
 import { initUpdater, stopUpdater } from './updater'
 import { initSync, isNetworkAllowed, stopSync } from './sync'
 import { applyLoginItem } from './loginItem'
+import { launchProfileItems } from './launcher'
+import { getAutoLaunchProfiles, isStartupLaunch } from '../shared/profiles'
 import { BrowserWindow } from 'electron'
 import { app } from 'electron/main'
 import { shell } from 'electron/common'
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
+
+async function runAutoLaunchProfiles(): Promise<void> {
+  const profiles = getAutoLaunchProfiles(store.get('profiles', []))
+  for (const profile of profiles) {
+    try {
+      await launchProfileItems(profile.items, profile.launchDelayMs)
+    } catch (error) {
+      console.error(`Auto-launch failed for workspace "${profile.name}":`, error)
+    }
+  }
+}
 
 function createWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
@@ -114,6 +127,13 @@ app.whenReady().then(() => {
   })
   // Keep the OS startup entry in sync with the setting (also repairs stale entries).
   applyLoginItem(store.get('settings', defaultSettings).launchAtLogin)
+  const wasOpenedAtLogin =
+    process.platform === 'darwin' ? app.getLoginItemSettings().wasOpenedAtLogin : false
+  if (isStartupLaunch(process.argv, wasOpenedAtLogin)) {
+    setTimeout(() => {
+      void runAutoLaunchProfiles()
+    }, 1500)
+  }
   registerMusicIpc(() => mainWindow)
   startFocusService()
   createWindow()

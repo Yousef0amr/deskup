@@ -63,6 +63,9 @@ test('duplicate IDs, nonfinite numbers and unsafe URLs are rejected', () => {
   assert.throws(() => validateBackup({ version: 5, todos: [todo, todo] }), /duplicate/)
   assert.throws(() => validateBackup({ version: 5, todos: [{ ...todo, order: Infinity }] }), /order/)
   assert.throws(() => validateBackup({ version: 5, profiles: [{ id: '1', name: 'test', icon: 'x', color: '#fff', launchDelayMs: 0, items: [{ id: '2', type: 'url', target: 'javascript:alert(1)' }] }] }), /URL/)
+  assert.throws(() => validateBackup({ version: 6, profiles: [{ id: '1', name: 'test', icon: 'x', color: '#fff', launchDelayMs: 0, autoLaunch: 'yes', items: [] }] }), /autoLaunch/)
+  const validWithAuto = validateBackup({ version: 6, profiles: [{ id: '1', name: 'test', icon: 'x', color: '#fff', launchDelayMs: 0, autoLaunch: true, items: [] }] })
+  assert.equal(validWithAuto.profiles[0].autoLaunch, true)
 })
 test('invalid versions, empty backups and malformed nested preferences fail', () => {
   for (const backup of [null, [], { version: 7, notes: '' }, { version: 5 }, { version: 5, settings: { clipboard: null } }, { version: 5, settings: { theme: 'invalid' } }, { version: 5, settings: { pomodoro: { workMin: 0 } } }]) {

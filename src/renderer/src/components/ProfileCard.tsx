@@ -9,10 +9,12 @@ import {
   AppWindow,
   FolderOpen,
   Globe,
-  Loader2
+  Loader2,
+  Power
 } from 'lucide-react'
 import type { Profile, LaunchResult, ItemType } from '../../../shared/types'
 import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 import { useToast } from './ui/toast'
 import { cn } from '../lib/utils'
 
@@ -72,9 +74,17 @@ export default function ProfileCard({
           {profile.icon}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[14px] font-semibold text-text" title={profile.name}>
-            {profile.name}
-          </h3>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="truncate text-[14px] font-semibold text-text" title={profile.name}>
+              {profile.name}
+            </h3>
+            {profile.autoLaunch && (
+              <Badge variant="info" className="gap-1 shrink-0" title="Launches automatically when PC starts">
+                <Power className="h-2.5 w-2.5" />
+                <span>Auto</span>
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted">
             {profile.items.length} {profile.items.length === 1 ? 'item' : 'items'}
             {profile.launchDelayMs > 0 && ` · ${profile.launchDelayMs} ms apart`}

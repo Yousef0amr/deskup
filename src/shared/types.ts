@@ -20,6 +20,7 @@ export interface Profile {
   color: string // hex
   items: ProfileItem[]
   launchDelayMs: number
+  autoLaunch?: boolean
 }
 
 export interface LaunchResult {

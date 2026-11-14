@@ -7,6 +7,7 @@ require.extensions['.ts'] = (module, filename) => {
   module._compile(result.outputText, filename)
 }
 const { cleanLaunchEnv, windowsStartArgs } = require('../src/main/launchEnv.ts')
+const { AUTOSTART_ARG, isStartupLaunch, getAutoLaunchProfiles } = require('../src/shared/profiles.ts')
 
 test('launched apps do not inherit IDE / Electron / npm variables', () => {
   const env = cleanLaunchEnv({
@@ -21,4 +22,21 @@ test('start arguments quote the target and reject unsafe characters', () => {
   const app = String.raw`C:\Program Files\App\app.exe`
   assert.deepEqual(windowsStartArgs(app), ['/d', '/s', '/c', `start "" "${app}"`])
   for (const bad of ['', 'a"b.exe', String.raw`%TEMP%\x.exe`, 'a\nb']) assert.equal(windowsStartArgs(bad), null)
+})
+
+test('startup launch detection checks autostart arg and login flag', () => {
+  assert.equal(isStartupLaunch(['Deskup.exe']), false)
+  assert.equal(isStartupLaunch(['Deskup.exe', AUTOSTART_ARG]), true)
+  assert.equal(isStartupLaunch(['Deskup.exe'], true), true)
+})
+
+test('getAutoLaunchProfiles filters to enabled non-empty workspaces', () => {
+  const item = { id: 'i1', type: 'url', target: 'https://example.com' }
+  const profiles = [
+    { id: '1', name: 'Work', icon: '💼', color: '#000', launchDelayMs: 300, autoLaunch: true, items: [item] },
+    { id: '2', name: 'Empty', icon: '💼', color: '#000', launchDelayMs: 300, autoLaunch: true, items: [] },
+    { id: '3', name: 'Manual', icon: '💼', color: '#000', launchDelayMs: 300, autoLaunch: false, items: [item] },
+    { id: '4', name: 'Legacy', icon: '💼', color: '#000', launchDelayMs: 300, items: [item] }
+  ]
+  assert.deepEqual(getAutoLaunchProfiles(profiles).map((p) => p.id), ['1'])
 })

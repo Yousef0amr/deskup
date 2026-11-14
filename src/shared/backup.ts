@@ -53,7 +53,7 @@ export function validateBackup(value: unknown): Backup {
   const result: RecordValue = {}
   const validators: Record<string, (value: unknown) => void> = {
     profiles: value => rows(value, row => {
-      fields(row, { name: 'string', icon: 'string', color: 'string', launchDelayMs: 'number' })
+      fields(row, { name: 'string', icon: 'string', color: 'string', launchDelayMs: 'number' }, { autoLaunch: 'boolean' })
       if (!(row.name as string).trim() || (row.launchDelayMs as number) < 0) throw new Error('Invalid profile')
       rows(row.items, item => {
         fields(item, { type: 'string', target: 'string' }, { label: 'string' })

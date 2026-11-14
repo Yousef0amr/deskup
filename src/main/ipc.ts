@@ -63,6 +63,7 @@ export function registerIpcHandlers(
       icon: typeof p.icon === 'string' && p.icon ? p.icon : '💼',
       color: typeof p.color === 'string' && p.color ? p.color : '#6366f1',
       launchDelayMs: typeof p.launchDelayMs === 'number' && p.launchDelayMs >= 0 ? p.launchDelayMs : 300,
+      autoLaunch: p.autoLaunch === true,
       items: Array.isArray(p.items)
         ? p.items.map((it) => ({
             id: String(it.id || Date.now() + Math.random().toString(36).substring(2, 6)),

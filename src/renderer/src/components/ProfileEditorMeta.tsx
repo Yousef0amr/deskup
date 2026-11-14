@@ -1,18 +1,23 @@
 import React from 'react'
 import { Clock, Palette, Smile } from 'lucide-react'
 import { Input } from './ui/input'
+import ProfileAutoLaunchOption from './ProfileAutoLaunchOption'
 
 interface ProfileEditorMetaProps {
   name: string
   icon: string
   color: string
   launchDelayMs: number
+  autoLaunch: boolean
+  alsoEnableLogin: boolean
   emojiPresets: string[]
   colorPresets: string[]
   onNameChange: (val: string) => void
   onIconChange: (val: string) => void
   onColorChange: (val: string) => void
   onDelayChange: (val: number) => void
+  onAutoLaunchChange: (val: boolean) => void
+  onAlsoEnableLoginChange: (val: boolean) => void
 }
 
 export default function ProfileEditorMeta({
@@ -20,12 +25,16 @@ export default function ProfileEditorMeta({
   icon,
   color,
   launchDelayMs,
+  autoLaunch,
+  alsoEnableLogin,
   emojiPresets,
   colorPresets,
   onNameChange,
   onIconChange,
   onColorChange,
-  onDelayChange
+  onDelayChange,
+  onAutoLaunchChange,
+  onAlsoEnableLoginChange
 }: ProfileEditorMetaProps): React.JSX.Element {
   return (
     <div className="space-y-4">
@@ -110,6 +119,13 @@ export default function ProfileEditorMeta({
           Delay between launching each item to prevent CPU spikes (default: 300ms).
         </p>
       </div>
+
+      <ProfileAutoLaunchOption
+        autoLaunch={autoLaunch}
+        alsoEnableLogin={alsoEnableLogin}
+        onAutoLaunchChange={onAutoLaunchChange}
+        onAlsoEnableLoginChange={onAlsoEnableLoginChange}
+      />
     </div>
   )
 }
