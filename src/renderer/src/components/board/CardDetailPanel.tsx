@@ -13,12 +13,13 @@ import {
   Trash2,
   Play,
   CopyPlus,
-  Hash
+  Hash,
+  ArrowRight
 } from 'lucide-react'
 import type { Board, BoardCard, CardPriority, CardType } from '../../../../shared/board'
-import { CARD_PRIORITIES, CARD_TYPES, ESTIMATES, branchName, cardKey, commitMessage } from '../../../../shared/board'
+import { CARD_PRIORITIES, CARD_TYPES, ESTIMATES, branchName, cardKey, commitMessage, nextColumnId } from '../../../../shared/board'
 import MarkdownPreview from '../MarkdownPreview'
-import { PRIORITY_META, TYPE_META, copyText, labelTone, newId } from './boardMeta'
+import { DESCRIPTION_TEMPLATES, PRIORITY_META, TYPE_META, copyText, labelTone, newId } from './boardMeta'
 import { useToast } from '../ui/toast'
 import { cn } from '../../lib/utils'
 
@@ -122,6 +123,8 @@ export default function CardDetailPanel({ board, card, onClose, onUpdate, onMove
 
   const doneCount = card?.checklist.filter((i) => i.done).length ?? 0
   const key = card ? cardKey(board, card) : ''
+  const nextColId = card ? nextColumnId(board, card.columnId) : null
+  const nextCol = nextColId ? board.columns.find((c) => c.id === nextColId) ?? null : null
 
   return (
     <DialogPrimitive.Root open={!!card} onOpenChange={(open) => !open && onClose()}>
@@ -146,6 +149,17 @@ export default function CardDetailPanel({ board, card, onClose, onUpdate, onMove
                   {key}
                 </button>
                 <div className="ml-auto flex items-center gap-0.5">
+                  {nextCol && (
+                    <button
+                      type="button"
+                      onClick={() => onMove(card.id, nextCol.id)}
+                      className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-text hover:bg-elevated"
+                      title={`Move to ${nextCol.name}`}
+                    >
+                      {nextCol.name}
+                      <ArrowRight className="h-3.5 w-3.5 text-muted" />
+                    </button>
+                  )}
                   <button type="button" onClick={() => onFocus(card)} className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-indigo-600 hover:bg-indigo-500/10 dark:text-indigo-400" title="Start a focus session on this card">
                     <Play className="h-3.5 w-3.5 fill-current" /> Focus
                   </button>
@@ -298,8 +312,31 @@ export default function CardDetailPanel({ board, card, onClose, onUpdate, onMove
 
                 {/* Description */}
                 <section>
-                  <div className="mb-1 flex items-center justify-between">
-                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted">Description</h4>
+                  <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted">Description</h4>
+                      {tab === 'write' && (
+                        <div className="flex items-center gap-1">
+                          {DESCRIPTION_TEMPLATES.map((tpl) => (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              onClick={() =>
+                                update({
+                                  description: card.description.trim()
+                                    ? `${card.description.trimEnd()}\n\n${tpl.body}`
+                                    : tpl.body
+                                })
+                              }
+                              className="rounded border border-border bg-elevated/60 px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-hover hover:text-text"
+                              title={`Insert ${tpl.label} template`}
+                            >
+                              + {tpl.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex gap-0.5">
                       {(['write', 'preview'] as const).map((t) => (
                         <button key={t} type="button" onClick={() => setTab(t)} className={cn('h-6 rounded px-2 text-[11px] font-medium capitalize', tab === t ? 'bg-elevated text-text' : 'text-muted hover:text-text')}>

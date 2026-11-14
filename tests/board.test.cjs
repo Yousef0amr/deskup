@@ -95,3 +95,33 @@ test('markdown export groups by column and marks done cards', () => {
   assert.match(md, /## Done \(1\)/)
   assert.match(md, /- \[x\] \*\*DSK-1\*\* Ship it _\(feature · 2 pts\)_/)
 })
+
+test('sortCards sorts by priority, due date, and newest while preserving tie-break order', () => {
+  const todo = col('To do')
+  const cards = [
+    card('a', 1, todo, 0, { priority: 'low', dueDate: '2026-11-20', createdAt: 10 }),
+    card('b', 2, todo, 1, { priority: 'urgent', createdAt: 30 }),
+    card('c', 3, todo, 2, { priority: 'high', dueDate: '2026-11-10', createdAt: 20 })
+  ]
+  assert.deepEqual(B.sortCards(cards, 'priority').map((c) => c.id), ['b', 'c', 'a'])
+  assert.deepEqual(B.sortCards(cards, 'due').map((c) => c.id), ['c', 'a', 'b'])
+  assert.deepEqual(B.sortCards(cards, 'newest').map((c) => c.id), ['b', 'c', 'a'])
+  assert.deepEqual(B.sortCards(cards, 'manual').map((c) => c.id), ['a', 'b', 'c'])
+})
+
+test('overdueOnly filter, nextColumnId, standup and branches helpers work', () => {
+  const todo = col('To do'), progress = col('In progress'), done = col('Done')
+  const now = 1_700_000_000_000
+  const cards = [
+    card('a', 1, todo, 0, { title: 'Fix token', type: 'bug', dueDate: '2026-11-10' }),
+    card('b', 2, progress, 0, { title: 'Build API', dueDate: '2026-11-20' }),
+    card('c', 3, done, 0, { title: 'Old done', dueDate: '2026-11-01', completedAt: now - 1000 })
+  ]
+  assert.deepEqual(B.filterCards(cards, board, { overdueOnly: true, today: '2026-11-14' }).map((c) => c.id), ['a'])
+  assert.equal(B.nextColumnId(board, todo), progress)
+  assert.equal(B.nextColumnId(board, done), null)
+  const standup = B.boardToStandup(board, cards, now)
+  assert.match(standup, /\*\*DSK-3\*\* Old done/)
+  assert.match(standup, /\*\*DSK-2\*\* Build API _\(In progress\)_/)
+  assert.equal(B.boardBranches(board, cards), 'fix/DSK-1-fix-token\nfeat/DSK-2-build-api')
+})

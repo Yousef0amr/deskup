@@ -1,5 +1,5 @@
 // Developer Kanban board: data model, validation and pure helpers (shared by main + renderer).
-import { isDateKey } from './todos'
+import { isDateKey, localDateKey } from './todos'
 
 export type CardType = 'feature' | 'bug' | 'chore' | 'refactor' | 'docs' | 'spike'
 export type CardPriority = 'urgent' | 'high' | 'medium' | 'low'
@@ -186,19 +186,27 @@ export function moveCard(
   })
 }
 
+export type CardSort = 'manual' | 'priority' | 'due' | 'newest'
+
+const PRIORITY_RANK: Record<CardPriority, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+
 export interface CardFilter {
   query?: string
   types?: CardType[]
   priorities?: CardPriority[]
   label?: string
+  overdueOnly?: boolean
+  today?: string
 }
 
 export function filterCards(cards: BoardCard[], board: Pick<Board, 'key'>, filter: CardFilter): BoardCard[] {
   const q = filter.query?.trim().toLowerCase()
+  const today = filter.today ?? (filter.overdueOnly ? localDateKey() : '')
   return cards.filter((c) => {
     if (filter.types?.length && !filter.types.includes(c.type)) return false
     if (filter.priorities?.length && !filter.priorities.includes(c.priority)) return false
     if (filter.label && !c.labels.includes(filter.label)) return false
+    if (filter.overdueOnly && (!!c.completedAt || !c.dueDate || c.dueDate >= today)) return false
     if (!q) return true
     return (
       cardKey(board, c).toLowerCase() === q ||
@@ -208,6 +216,28 @@ export function filterCards(cards: BoardCard[], board: Pick<Board, 'key'>, filte
       c.labels.some((l) => l.toLowerCase().includes(q))
     )
   })
+}
+
+export function sortCards(cards: BoardCard[], sort: CardSort): BoardCard[] {
+  if (sort === 'manual') return [...cards].sort((a, b) => a.order - b.order)
+  return [...cards].sort((a, b) => {
+    if (sort === 'priority') {
+      const diff = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
+      if (diff !== 0) return diff
+    } else if (sort === 'due') {
+      if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate)
+      if (a.dueDate !== b.dueDate) return a.dueDate ? -1 : 1
+    } else if (sort === 'newest') {
+      if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt
+    }
+    return a.order - b.order
+  })
+}
+
+export function nextColumnId(board: Pick<Board, 'columns'>, currentColumnId: string): string | null {
+  const idx = board.columns.findIndex((c) => c.id === currentColumnId)
+  if (idx < 0 || idx >= board.columns.length - 1) return null
+  return board.columns[idx + 1].id
 }
 
 export function columnStats(cards: BoardCard[], column: BoardColumn): { count: number; points: number; overLimit: boolean } {
@@ -235,6 +265,46 @@ export function boardToMarkdown(board: Board, cards: BoardCard[]): string {
     lines.push('')
   }
   return lines.join('\n').trim() + '\n'
+}
+
+/** Concise daily standup update: recently completed + currently in flight. */
+export function boardToStandup(board: Board, cards: BoardCard[], now = Date.now()): string {
+  const cutoff = now - 2 * 86_400_000
+  const doneCols = new Set(board.columns.filter((c) => c.done).map((c) => c.id))
+  const activeCols = board.columns.filter((c) => !c.done && !/^backlog$/i.test(c.name.trim()))
+  const recentDone = cards
+    .filter((c) => doneCols.has(c.columnId) && (c.completedAt ?? 0) >= cutoff)
+    .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
+
+  const lines = [`**${board.name} — Standup**`, '']
+  lines.push('**Done recently**')
+  if (recentDone.length) {
+    for (const c of recentDone) lines.push(`- **${cardKey(board, c)}** ${c.title}`)
+  } else {
+    lines.push('- _None_')
+  }
+  lines.push('', '**Up next / In progress**')
+  let activeCount = 0
+  for (const col of activeCols) {
+    for (const c of columnCards(cards, col.id)) {
+      lines.push(`- **${cardKey(board, c)}** ${c.title} _(${col.name})_`)
+      activeCount++
+    }
+  }
+  if (activeCount === 0) lines.push('- _None_')
+  return lines.join('\n') + '\n'
+}
+
+/** Active git branch names for non-done cards, in column order. */
+export function boardBranches(board: Board, cards: BoardCard[]): string {
+  const lines: string[] = []
+  for (const col of board.columns) {
+    if (col.done) continue
+    for (const c of columnCards(cards, col.id)) {
+      lines.push(branchName(board, c))
+    }
+  }
+  return lines.join('\n')
 }
 
 const TYPE_ALIASES: Record<string, CardType> = {

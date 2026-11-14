@@ -1,33 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Settings2, Plus, ClipboardCopy, X, Filter } from 'lucide-react'
-import type { Board, BoardCard, BoardColumn, BoardData, CardPriority, CardType } from '../../../shared/board'
+import { Terminal, X } from 'lucide-react'
+import type { Board, BoardCard, BoardColumn, BoardData, CardPriority, CardSort, CardType } from '../../../shared/board'
 import {
-  CARD_PRIORITIES,
-  CARD_TYPES,
+  boardBranches,
   boardToMarkdown,
+  boardToStandup,
   cardKey,
+  branchName,
   columnCards,
   columnStats,
   createBoard,
   filterCards,
   moveCard,
-  parseQuickAdd
+  nextColumnId,
+  parseQuickAdd,
+  sortCards
 } from '../../../shared/board'
+import { localDateKey } from '../../../shared/todos'
 import BoardColumnView from '../components/board/BoardColumnView'
-import CardDetailPanel from '../components/board/CardDetailPanel'
+import BoardFilterBar from '../components/board/BoardFilterBar'
+import BoardHeader, { type BoardViewMode } from '../components/board/BoardHeader'
+import BoardListView from '../components/board/BoardListView'
 import BoardSettingsDialog from '../components/board/BoardSettingsDialog'
-import { PRIORITY_META, TYPE_META, copyText, labelTone, newId } from '../components/board/boardMeta'
-import { Button } from '../components/ui/button'
+import CardDetailPanel from '../components/board/CardDetailPanel'
+import { buildStarterCards, copyText, newId } from '../components/board/boardMeta'
 import { BoardSkeleton } from '../components/ui/skeletons'
 import { useToast } from '../components/ui/toast'
-import { cn } from '../lib/utils'
 
 const ACTIVE_BOARD_KEY = 'deskup.activeBoard'
+const BOARD_VIEW_KEY = 'deskup.boardView'
 const SAVE_DELAY_MS = 350
 
-function readActiveBoard(): string | null {
+function readStorage(key: string): string | null {
   try {
-    return localStorage.getItem(ACTIVE_BOARD_KEY)
+    return localStorage.getItem(key)
   } catch {
     return null
   }
@@ -41,15 +47,20 @@ function isTyping(target: EventTarget | null): boolean {
 export default function BoardPage(): React.JSX.Element {
   const [data, setData] = useState<BoardData | null>(null)
   const [loadError, setLoadError] = useState('')
-  const [activeId, setActiveId] = useState<string | null>(readActiveBoard)
+  const [activeId, setActiveId] = useState<string | null>(() => readStorage(ACTIVE_BOARD_KEY))
+  const [viewMode, setViewMode] = useState<BoardViewMode>(() => (readStorage(BOARD_VIEW_KEY) === 'list' ? 'list' : 'board'))
   const [query, setQuery] = useState('')
   const [types, setTypes] = useState<CardType[]>([])
   const [priorities, setPriorities] = useState<CardPriority[]>([])
   const [label, setLabel] = useState('')
+  const [overdueOnly, setOverdueOnly] = useState(false)
+  const [sort, setSort] = useState<CardSort>('manual')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [quickAddColumn, setQuickAddColumn] = useState<string | null>(null)
+  const [listDraft, setListDraft] = useState('')
   const [settings, setSettings] = useState<'new' | 'edit' | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const dataRef = useRef<BoardData | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -82,7 +93,6 @@ export default function BoardPage(): React.JSX.Element {
       .get()
       .then((loaded) => {
         if (loaded.boards.length === 0) {
-          // First run: a ready-to-use board with a sensible dev workflow.
           const first = createBoard('Product', 'DSK', newId())
           loaded = { boards: [first], cards: [] }
           void window.deskup.board.save(loaded)
@@ -108,14 +118,25 @@ export default function BoardPage(): React.JSX.Element {
     }
   }, [board])
 
+  const changeViewMode = (mode: BoardViewMode) => {
+    setViewMode(mode)
+    setQuickAddColumn(null)
+    try {
+      localStorage.setItem(BOARD_VIEW_KEY, mode)
+    } catch {
+      // Convenience only.
+    }
+  }
+
+  const today = localDateKey()
   const boardCards = useMemo(() => (data && board ? data.cards.filter((c) => c.boardId === board.id) : []), [data, board])
   const visibleCards = useMemo(
-    () => (board ? filterCards(boardCards, board, { query, types, priorities, label: label || undefined }) : []),
-    [boardCards, board, query, types, priorities, label]
+    () => (board ? filterCards(boardCards, board, { query, types, priorities, label: label || undefined, overdueOnly, today }) : []),
+    [boardCards, board, query, types, priorities, label, overdueOnly, today]
   )
   const allLabels = useMemo(() => [...new Set(boardCards.flatMap((c) => c.labels))].sort(), [boardCards])
   const selected = useMemo(() => boardCards.find((c) => c.id === selectedId) ?? null, [boardCards, selectedId])
-  const filtersActive = !!query || types.length > 0 || priorities.length > 0 || !!label
+  const filtersActive = !!query || types.length > 0 || priorities.length > 0 || !!label || overdueOnly
 
   // ---- card actions
   const addCard = useCallback(
@@ -188,6 +209,18 @@ export default function BoardPage(): React.JSX.Element {
     [board, data, dropCard]
   )
 
+  const advanceCard = useCallback(
+    (card: BoardCard) => {
+      if (!board) return
+      const nextId = nextColumnId(board, card.columnId)
+      if (!nextId) return
+      const nextCol = board.columns.find((c) => c.id === nextId)
+      moveToColumn(card.id, nextId)
+      if (nextCol) toast(`Moved ${cardKey(board, card)} to ${nextCol.name}`, 'info')
+    },
+    [board, moveToColumn, toast]
+  )
+
   const deleteCard = useCallback(
     (id: string) => {
       const card = data?.cards.find((c) => c.id === id)
@@ -200,6 +233,26 @@ export default function BoardPage(): React.JSX.Element {
       })
     },
     [data, board, commit, toast]
+  )
+
+  const clearDoneColumn = useCallback(
+    (columnId: string) => {
+      if (!board || !data) return
+      const removed = data.cards.filter((c) => c.boardId === board.id && c.columnId === columnId)
+      if (removed.length === 0) return
+      const removedIds = new Set(removed.map((c) => c.id))
+      if (selectedId && removedIds.has(selectedId)) setSelectedId(null)
+      commit((d) => ({ ...d, cards: d.cards.filter((c) => !removedIds.has(c.id)) }))
+      toast(`Cleared ${removed.length} completed card${removed.length === 1 ? '' : 's'}`, 'info', {
+        label: 'Undo',
+        onClick: () =>
+          commit((d) => {
+            const existing = new Set(d.cards.map((c) => c.id))
+            return { ...d, cards: [...d.cards, ...removed.filter((c) => !existing.has(c.id))] }
+          })
+      })
+    },
+    [board, data, selectedId, commit, toast]
   )
 
   const duplicateCard = useCallback(
@@ -243,6 +296,35 @@ export default function BoardPage(): React.JSX.Element {
     [board, toast]
   )
 
+  const copyCardKey = useCallback((key: string) => void copyText(key).then(() => toast(`Copied ${key}`, 'info')), [toast])
+  const copyCardBranch = useCallback(
+    (card: BoardCard) => {
+      if (!board) return
+      const name = branchName(board, card)
+      void copyText(name).then(() => toast(`Copied branch: ${name}`, 'info'))
+    },
+    [board, toast]
+  )
+
+  const seedStarterCards = useCallback(() => {
+    if (!board) return
+    const { cards: seeded, nextNumber } = buildStarterCards(board)
+    const seededIds = new Set(seeded.map((c) => c.id))
+    const prevNext = board.nextNumber
+    commit((d) => ({
+      boards: d.boards.map((b) => (b.id === board.id ? { ...b, nextNumber } : b)),
+      cards: [...d.cards, ...seeded]
+    }))
+    toast('Added 4 starter developer cards', 'success', {
+      label: 'Undo',
+      onClick: () =>
+        commit((d) => ({
+          boards: d.boards.map((b) => (b.id === board.id ? { ...b, nextNumber: prevNext } : b)),
+          cards: d.cards.filter((c) => !seededIds.has(c.id))
+        }))
+    })
+  }, [board, commit, toast])
+
   // ---- board actions
   const saveBoardSettings = (draft: { name: string; key: string; columns: BoardColumn[] }) => {
     if (settings === 'new') {
@@ -251,18 +333,32 @@ export default function BoardPage(): React.JSX.Element {
       setActiveId(created.id)
       toast(`Created board “${created.name}”`)
     } else if (board) {
-      commit((d) => ({ ...d, boards: d.boards.map((b) => (b.id === board.id ? { ...b, name: draft.name, key: draft.key, columns: draft.columns } : b)) }))
+      commit((d) => ({
+        ...d,
+        boards: d.boards.map((b) => (b.id === board.id ? { ...b, name: draft.name, key: draft.key, columns: draft.columns } : b))
+      }))
     }
     setSettings(null)
   }
 
   const deleteBoard = () => {
     if (!board || !data || data.boards.length <= 1) return
-    const count = boardCards.length
-    if (!confirm(`Delete board “${board.name}”${count ? ` and its ${count} card(s)` : ''}? This cannot be undone.`)) return
-    commit((d) => ({ boards: d.boards.filter((b) => b.id !== board.id), cards: d.cards.filter((c) => c.boardId !== board.id) }))
+    const removedBoard = board
+    const removedCards = boardCards
+    commit((d) => ({ boards: d.boards.filter((b) => b.id !== removedBoard.id), cards: d.cards.filter((c) => c.boardId !== removedBoard.id) }))
     setActiveId(null)
+    setSelectedId(null)
     setSettings(null)
+    toast(`Deleted board “${removedBoard.name}”`, 'info', {
+      label: 'Undo',
+      onClick: () => {
+        commit((d) => ({
+          boards: d.boards.some((b) => b.id === removedBoard.id) ? d.boards : [...d.boards, removedBoard],
+          cards: [...d.cards, ...removedCards.filter((c) => !d.cards.some((x) => x.id === c.id))]
+        }))
+        setActiveId(removedBoard.id)
+      }
+    })
   }
 
   // ---- keyboard: N = new card, / = search, Esc = clear search
@@ -294,155 +390,196 @@ export default function BoardPage(): React.JSX.Element {
 
   const doneColumnIds = new Set(board.columns.filter((c) => c.done).map((c) => c.id))
   const openCards = boardCards.filter((c) => !doneColumnIds.has(c.columnId))
+  const overdueCount = openCards.filter((c) => !!c.dueDate && c.dueDate < today).length
   const weekAgo = Date.now() - 7 * 86_400_000
   const doneThisWeek = boardCards.filter((c) => c.completedAt && c.completedAt >= weekAgo)
   const cardCounts = Object.fromEntries(board.columns.map((c) => [c.id, boardCards.filter((x) => x.columnId === c.id).length]))
+  const boardCardCounts = Object.fromEntries(data.boards.map((b) => [b.id, data.cards.filter((c) => c.boardId === b.id).length]))
 
   const toggle = <T,>(list: T[], value: T): T[] => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-4">
-      {/* Header */}
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex items-center gap-1.5">
-          <select
-            value={board.id}
-            onChange={(e) => {
-              setActiveId(e.target.value)
-              setSelectedId(null)
-            }}
-            className="h-8 max-w-[220px] cursor-pointer rounded-lg bg-transparent pr-1 text-xl font-semibold tracking-tight text-text hover:bg-elevated focus:outline-none"
-            aria-label="Board"
-          >
-            {data.boards.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-          <span className="rounded bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-muted">{board.key}</span>
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSettings('edit')} title="Board settings" aria-label="Board settings">
-            <Settings2 className="h-4 w-4" />
-          </Button>
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSettings('new')} title="New board" aria-label="New board">
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-3.5">
+      <BoardHeader
+        boards={data.boards}
+        activeBoard={board}
+        boardCardCounts={boardCardCounts}
+        openCount={openCards.length}
+        pointsInFlight={openCards.reduce((s, c) => s + (c.estimate ?? 0), 0)}
+        doneThisWeekCount={doneThisWeek.length}
+        viewMode={viewMode}
+        onViewModeChange={changeViewMode}
+        query={query}
+        onQueryChange={setQuery}
+        searchRef={searchRef}
+        onSelectBoard={(id) => {
+          setActiveId(id)
+          setSelectedId(null)
+        }}
+        onOpenSettings={setSettings}
+        onCopyMarkdown={() => void copyText(boardToMarkdown(board, boardCards)).then(() => toast('Board copied as Markdown'))}
+        onCopyStandup={() => void copyText(boardToStandup(board, boardCards)).then(() => toast('Standup update copied'))}
+        onCopyBranches={() => {
+          const text = boardBranches(board, boardCards)
+          if (!text) return toast('No active cards to copy branches from', 'info')
+          void copyText(text).then(() => toast('Active git branch names copied'))
+        }}
+      />
 
-        <div className="flex items-center gap-3 text-xs text-muted">
-          <span><b className="font-semibold text-text tabular-nums">{openCards.length}</b> open</span>
-          <span><b className="font-semibold text-text tabular-nums">{openCards.reduce((s, c) => s + (c.estimate ?? 0), 0)}</b> pts in flight</span>
-          <span><b className="font-semibold text-text tabular-nums">{doneThisWeek.length}</b> done this week</span>
-        </div>
+      <BoardFilterBar
+        types={types}
+        priorities={priorities}
+        label={label}
+        allLabels={allLabels}
+        overdueOnly={overdueOnly}
+        overdueCount={overdueCount}
+        sort={sort}
+        filtersActive={filtersActive}
+        onToggleType={(t) => setTypes((v) => toggle(v, t))}
+        onTogglePriority={(p) => setPriorities((v) => toggle(v, p))}
+        onToggleLabel={(l) => setLabel(label === l ? '' : l)}
+        onToggleOverdue={() => setOverdueOnly((v) => !v)}
+        onSortChange={setSort}
+        onClearAll={() => {
+          setQuery('')
+          setTypes([])
+          setPriorities([])
+          setLabel('')
+          setOverdueOnly(false)
+        }}
+      />
 
-        <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search or DSK-12"
-              className="h-8 w-52 rounded-lg border border-border bg-surface pl-8 pr-7 text-xs text-text placeholder:text-muted hover:border-hover focus:border-indigo-500/60 focus:outline-none"
-              aria-label="Search cards"
-            />
-            <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted">/</kbd>
+      {boardCards.length === 0 && !bannerDismissed && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3.5 py-2 text-xs">
+          <Terminal className="h-3.5 w-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+          <span className="text-text">
+            Quick-add with <code className="rounded bg-elevated px-1 py-0.5 font-mono text-[11px]">fix: auth timeout #api !high ~3</code> or press{' '}
+            <kbd className="rounded border border-border bg-elevated px-1 font-mono text-[10px]">N</kbd> anywhere.
+          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={seedStarterCards}
+              className="rounded-md bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-indigo-500"
+            >
+              Load sample cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setBannerDismissed(true)}
+              aria-label="Dismiss tip"
+              className="rounded p-1 text-muted hover:bg-elevated hover:text-text"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => void copyText(boardToMarkdown(board, boardCards)).then(() => toast('Board copied as Markdown'))}
-            title="Copy the board as Markdown (stand-ups, PR descriptions)"
-          >
-            <ClipboardCopy className="h-3.5 w-3.5" /> Markdown
-          </Button>
         </div>
-      </header>
+      )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-1 text-xs">
-        <Filter className="mr-1 h-3.5 w-3.5 text-muted" aria-hidden />
-        {CARD_TYPES.map((t) => {
-          const meta = TYPE_META[t]
-          const on = types.includes(t)
-          return (
-            <button key={t} type="button" onClick={() => setTypes((v) => toggle(v, t))} aria-pressed={on} className={cn('flex h-6 items-center gap-1 rounded-md px-2 transition-colors', on ? 'bg-elevated font-medium text-text' : 'text-muted hover:text-text')}>
-              <meta.icon className={cn('h-3 w-3', meta.tone)} />
-              {meta.label}
-            </button>
-          )
-        })}
-        <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-        {CARD_PRIORITIES.map((p) => {
-          const meta = PRIORITY_META[p]
-          const on = priorities.includes(p)
-          return (
-            <button key={p} type="button" onClick={() => setPriorities((v) => toggle(v, p))} aria-pressed={on} className={cn('flex h-6 items-center gap-1 rounded-md px-2 transition-colors', on ? 'bg-elevated font-medium text-text' : 'text-muted hover:text-text')}>
-              <meta.icon className={cn('h-3 w-3', meta.tone)} />
-              {meta.label}
-            </button>
-          )
-        })}
-        {allLabels.length > 0 && (
-          <>
-            <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-            {allLabels.map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => setLabel(label === l ? '' : l)}
-                aria-pressed={label === l}
-                className={cn('h-6 rounded-md px-2 font-medium transition-opacity', labelTone(l), label && label !== l ? 'opacity-40' : 'opacity-100')}
+      {viewMode === 'board' ? (
+        <div className="-mx-2 flex min-h-0 flex-1 gap-3 overflow-x-auto px-2 pb-2">
+          {board.columns.map((column, idx) => {
+            const stats = columnStats(boardCards, column)
+            const nextColId = nextColumnId(board, column.id)
+            const nextColName = nextColId ? board.columns.find((c) => c.id === nextColId)?.name ?? null : null
+            const colList = columnCards(visibleCards, column.id)
+            const sortedList = sort === 'manual' ? colList : sortCards(colList, sort)
+
+            return (
+              <BoardColumnView
+                key={column.id}
+                board={board}
+                column={column}
+                columnIndex={idx}
+                nextColumnName={nextColName}
+                cards={sortedList}
+                totalCount={stats.count}
+                points={stats.points}
+                selectedId={selectedId}
+                draggingId={draggingId}
+                quickAddOpen={quickAddColumn === column.id}
+                onQuickAddOpenChange={(open) => setQuickAddColumn(open ? column.id : null)}
+                onQuickAdd={addCard}
+                onClearDone={clearDoneColumn}
+                onOpenCard={setSelectedId}
+                onCopyKey={copyCardKey}
+                onCopyBranch={copyCardBranch}
+                onAdvance={advanceCard}
+                onFocus={focusOnCard}
+                onDragStart={setDraggingId}
+                onDragEnd={() => setDraggingId(null)}
+                onDrop={dropCard}
+              />
+            )
+          })}
+        </div>
+      ) : (
+        <>
+          {quickAddColumn && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (listDraft.trim()) {
+                  addCard(quickAddColumn, listDraft)
+                  setListDraft('')
+                }
+              }}
+              className="flex items-center gap-2 rounded-xl border border-indigo-500/60 bg-surface px-3 py-2"
+            >
+              <select
+                value={quickAddColumn}
+                onChange={(e) => setQuickAddColumn(e.target.value)}
+                aria-label="Target column"
+                className="h-7 rounded border border-border bg-background px-2 text-xs text-text focus:outline-none"
               >
-                {l}
+                {board.columns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                autoFocus
+                value={listDraft}
+                onChange={(e) => setListDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setQuickAddColumn(null)}
+                placeholder="feat: add webhook retries #api !high ~3"
+                className="h-7 flex-1 bg-transparent text-xs text-text placeholder:text-muted focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!parseQuickAdd(listDraft).title}
+                className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+              >
+                Add
               </button>
-            ))}
-          </>
-        )}
-        {filtersActive && (
-          <button
-            type="button"
-            onClick={() => {
-              setQuery('')
-              setTypes([])
-              setPriorities([])
-              setLabel('')
-            }}
-            className="ml-1 flex h-6 items-center gap-1 rounded-md px-2 text-muted hover:text-text"
-          >
-            <X className="h-3 w-3" /> Clear
-          </button>
-        )}
-        <span className="ml-auto hidden text-[11px] text-muted lg:inline">
-          <kbd className="font-mono">N</kbd> new card · <kbd className="font-mono">/</kbd> search · drag to move
-        </span>
-      </div>
-
-      {/* Columns */}
-      <div className="-mx-2 flex min-h-0 flex-1 gap-3 overflow-x-auto px-2 pb-2">
-        {board.columns.map((column) => {
-          const stats = columnStats(boardCards, column)
-          return (
-            <BoardColumnView
-              key={column.id}
-              board={board}
-              column={column}
-              cards={columnCards(visibleCards, column.id)}
-              totalCount={stats.count}
-              points={stats.points}
-              selectedId={selectedId}
-              draggingId={draggingId}
-              quickAddOpen={quickAddColumn === column.id}
-              onQuickAddOpenChange={(open) => setQuickAddColumn(open ? column.id : null)}
-              onQuickAdd={addCard}
-              onOpenCard={setSelectedId}
-              onDragStart={setDraggingId}
-              onDragEnd={() => setDraggingId(null)}
-              onDrop={dropCard}
-            />
-          )
-        })}
-      </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setListDraft('')
+                  setQuickAddColumn(null)
+                }}
+                className="rounded p-1 text-muted hover:text-text"
+                aria-label="Close quick add"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </form>
+          )}
+          <BoardListView
+            board={board}
+            cards={visibleCards}
+            sort={sort}
+            selectedId={selectedId}
+            onOpenCard={setSelectedId}
+            onMoveColumn={moveToColumn}
+            onCopyKey={copyCardKey}
+            onCopyBranch={copyCardBranch}
+            onFocus={focusOnCard}
+            onQuickAddColumn={(colId) => setQuickAddColumn(colId)}
+          />
+        </>
+      )}
 
       <CardDetailPanel
         board={board}
