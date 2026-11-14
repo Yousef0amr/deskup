@@ -109,10 +109,65 @@ const api: DeskupAPI = {
     exportAll: () => ipcRenderer.invoke('data:exportAll'),
     importAll: () => ipcRenderer.invoke('data:importAll')
   },
+  sync: {
+    getStatus: () => ipcRenderer.invoke('sync:getStatus'),
+    onStatus: callback => {
+      const handler = (_: unknown, status: import('../shared/types').SyncStatus) => callback(status)
+      ipcRenderer.on('sync:status', handler)
+      return () => { ipcRenderer.removeListener('sync:status', handler) }
+    },
+    onApplied: callback => {
+      const handler = (_: unknown, info: { collections: string[] }) => callback(info)
+      ipcRenderer.on('sync:applied', handler)
+      return () => { ipcRenderer.removeListener('sync:applied', handler) }
+    },
+    getConfig: () => ipcRenderer.invoke('sync:getConfig'),
+    chooseFolder: () => ipcRenderer.invoke('sync:chooseFolder'),
+    inspectFolder: (folderPath: string) => ipcRenderer.invoke('sync:inspectFolder', folderPath),
+    setup: options => ipcRenderer.invoke('sync:setup', options),
+    unlock: (passphrase: string) => ipcRenderer.invoke('sync:unlock', passphrase),
+    setMemberName: (name: string) => ipcRenderer.invoke('sync:setMemberName', name),
+    useLocal: () => ipcRenderer.invoke('sync:useLocal'),
+    setMode: mode => ipcRenderer.invoke('sync:setMode', mode),
+    setDeviceName: (name: string) => ipcRenderer.invoke('sync:setDeviceName', name),
+    syncNow: () => ipcRenderer.invoke('sync:syncNow'),
+    viewsRefreshed: () => ipcRenderer.send('sync:viewsRefreshed')
+  },
+  updates: {
+    getStatus: () => ipcRenderer.invoke('update:getStatus'),
+    onStatus: callback => {
+      const handler = (_: unknown, status: import('../shared/types').UpdateStatus) => callback(status)
+      ipcRenderer.on('update:status', handler)
+      return () => { ipcRenderer.removeListener('update:status', handler) }
+    },
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install')
+  },
   snip: {
     start: () => ipcRenderer.invoke('snip:start'),
-    getCapture: () => ipcRenderer.invoke('snip:getCapture'),
+    ready: () => ipcRenderer.send('snip:ready'),
+    onBegin: callback => {
+      const handler = (_: unknown, begin: import('../shared/types').SnipBegin) => callback(begin)
+      ipcRenderer.on('snip:begin', handler)
+      return () => { ipcRenderer.removeListener('snip:begin', handler) }
+    },
+    painted: (session: number) => ipcRenderer.send('snip:painted', session),
+    onFrame: callback => {
+      const handler = (_: unknown, frame: import('../shared/types').SnipFrame) => callback(frame)
+      ipcRenderer.on('snip:frame', handler)
+      return () => { ipcRenderer.removeListener('snip:frame', handler) }
+    },
+    onReset: callback => {
+      const handler = () => callback()
+      ipcRenderer.on('snip:reset', handler)
+      return () => { ipcRenderer.removeListener('snip:reset', handler) }
+    },
+    copyImage: (dataUrl: string) => ipcRenderer.invoke('snip:copyImage', dataUrl),
     saveImage: (dataUrl: string) => ipcRenderer.invoke('snip:saveImage', dataUrl),
+    pin: (dataUrl: string, rect: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.invoke('snip:pin', dataUrl, rect),
+    copyText: (dataUrl: string) => ipcRenderer.invoke('snip:copyText', dataUrl),
     close: () => ipcRenderer.invoke('snip:close')
   }
 }

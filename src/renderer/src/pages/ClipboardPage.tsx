@@ -21,6 +21,7 @@ import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { useToast } from '../components/ui/toast'
+import { ClipboardListSkeleton } from '../components/ui/skeletons'
 
 export default function ClipboardPage(): React.JSX.Element {
   const [clips, setClips] = useState<ClipItem[]>([])
@@ -385,7 +386,7 @@ export default function ClipboardPage(): React.JSX.Element {
 
       {/* Clips List */}
       {isLoading ? (
-        <div className="text-center py-16 text-muted text-xs">Loading clipboard history...</div>
+        <ClipboardListSkeleton count={6} />
       ) : filteredClips.length === 0 ? (
         <div className="text-center py-20 px-4 border border-dashed border-border/80 rounded-xl bg-surface/30 flex flex-col items-center">
           <div className="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-3">

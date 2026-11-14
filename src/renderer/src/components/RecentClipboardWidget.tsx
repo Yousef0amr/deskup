@@ -16,6 +16,7 @@ import { clipImageUrl, copyClip } from '../utils/clipboardUtils'
 import { WidgetHeader } from './ui/widget-header'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
+import { Skeleton } from './ui/skeleton'
 
 interface RecentClipboardWidgetProps {
   onNavigateToClipboard?: () => void
@@ -92,7 +93,20 @@ export default function RecentClipboardWidget({
       {/* Clips List */}
       <div className="flex-1 flex flex-col justify-between">
         {loading ? (
-          <p className="text-xs text-muted py-8 text-center">Loading clipboard...</p>
+          <div role="status" aria-label="Loading recent clips" className="space-y-2.5 flex-1">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center justify-between p-2.5 rounded-xl border border-border/50 bg-elevated/30">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                  <Skeleton className="h-8 w-8 rounded shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3.5 w-3/4" />
+                    <Skeleton className="h-2.5 w-14" />
+                  </div>
+                </div>
+                <Skeleton className="h-7 w-7 rounded-lg shrink-0" />
+              </div>
+            ))}
+          </div>
         ) : clips.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-muted text-xs py-6 space-y-2 rounded-lg border border-dashed border-border">
             <ClipboardList className="w-8 h-8 opacity-40" />

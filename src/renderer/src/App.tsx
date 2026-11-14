@@ -6,7 +6,6 @@ import {
   ClipboardList,
   FileText,
   Settings as SettingsIcon,
-  ShieldCheck,
   Search,
   Wrench,
   PanelLeftClose,
@@ -17,6 +16,8 @@ import {
 import { Button } from './components/ui/button'
 import { ToastProvider } from './components/ui/toast'
 import { Logo } from './components/ui/logo'
+import SyncIndicator from './components/SyncIndicator'
+import { PageSkeleton, ClipboardListSkeleton } from './components/ui/skeletons'
 import { cn } from './lib/utils'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -31,7 +32,11 @@ const ClipboardPopup = lazy(() => import('./components/ClipboardPopup'))
 const SnipOverlay = lazy(() => import('./components/SnipOverlay'))
 const CommandPaletteModal = lazy(() => import('./components/CommandPalette/CommandPaletteModal'))
 
-const loadingView = <div role="status" className="p-4 text-sm text-muted">Loading…</div>
+const popupSkeleton = (
+  <div role="status" aria-label="Loading clipboard" className="h-screen w-screen bg-background p-3">
+    <ClipboardListSkeleton count={4} />
+  </div>
+)
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -67,7 +72,46 @@ export default function App(): React.JSX.Element {
   const [hotkeys, setHotkeys] = useState({ main: '', clipboard: '' })
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [dataVersion, setDataVersion] = useState(0)
   const themeRef = useRef<Theme>('system')
+
+  // When sync applies changes from another device, reload the open page — but not while the
+  // user is typing in it; wait until they leave the field so no keystrokes are lost.
+  useEffect(() => {
+    if (isPopup || isSnipOverlay) return
+    let waiting = false
+    const isEditing = () => {
+      const el = document.activeElement as HTMLElement | null
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+    }
+    const refresh = () => {
+      waiting = false
+      setDataVersion((v) => v + 1)
+    }
+    const onFocusOut = () => {
+      if (waiting && !isEditing()) {
+        document.removeEventListener('focusout', onFocusOut)
+        setTimeout(() => (isEditing() ? document.addEventListener('focusout', onFocusOut) : refresh()), 0)
+      }
+    }
+    const off = window.deskup.sync.onApplied(() => {
+      if (!isEditing()) return refresh()
+      if (!waiting) {
+        waiting = true
+        document.addEventListener('focusout', onFocusOut)
+      }
+    })
+    return () => {
+      off()
+      document.removeEventListener('focusout', onFocusOut)
+    }
+  }, [isPopup, isSnipOverlay])
+
+  // Tell the sync engine the page now shows post-sync data (runs after the old page's
+  // unmount, so any save it flushed on the way out is still treated as possibly stale).
+  useEffect(() => {
+    if (dataVersion > 0) window.deskup.sync.viewsRefreshed()
+  }, [dataVersion])
 
   const applyTheme = useCallback((theme: Theme) => {
     themeRef.current = theme
@@ -144,7 +188,7 @@ export default function App(): React.JSX.Element {
 
   if (isPopup) {
     return (
-      <Suspense fallback={loadingView}>
+      <Suspense fallback={popupSkeleton}>
         <ClipboardPopup />
       </Suspense>
     )
@@ -221,11 +265,8 @@ Clipboard popup: ${prettyHotkey(hotkeys.clipboard)}`}
           </nav>
 
           {/* Sidebar Footer */}
-          <div className={cn('mt-auto flex items-center gap-2 pt-3', collapsed ? 'flex-col' : 'justify-between pl-2.5')}>
-            <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted" title="All data stays on this device">
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              {!collapsed && <span className="truncate">Local only</span>}
-            </div>
+          <div className={cn('mt-auto flex items-center gap-2 pt-3', collapsed ? 'flex-col' : 'justify-between pl-1')}>
+            <SyncIndicator collapsed={collapsed} onOpenSettings={() => setActiveTab('settings')} />
             <Button
               type="button"
               variant="ghost"
@@ -243,7 +284,8 @@ Clipboard popup: ${prettyHotkey(hotkeys.clipboard)}`}
         {/* Main View Area */}
         <main className="flex-1 overflow-y-auto bg-background px-8 py-7">
           <div key={activeTab} className="mx-auto max-w-[1600px] animate-page-in">
-            <Suspense fallback={loadingView}>
+            {/* Re-keyed when sync brings in changes from other devices, so the page reloads its data. */}
+            <Suspense key={dataVersion} fallback={<PageSkeleton />}>
               {activeTab === 'dashboard' && (
                 <DashboardPage
                   onNavigateToProfiles={() => setActiveTab('profiles')}
@@ -264,7 +306,7 @@ Clipboard popup: ${prettyHotkey(hotkeys.clipboard)}`}
 
         {/* Global Command Palette */}
         {isCommandPaletteOpen && (
-          <Suspense fallback={loadingView}>
+          <Suspense fallback={null}>
             <CommandPaletteModal
               isOpen={isCommandPaletteOpen}
               onClose={() => setIsCommandPaletteOpen(false)}

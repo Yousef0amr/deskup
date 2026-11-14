@@ -9,6 +9,7 @@ import NoteEditorHeader from '../components/NoteEditorHeader'
 import MarkdownPreview from '../components/MarkdownPreview'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
+import { NoteEditorSkeleton } from '../components/ui/skeletons'
 
 export default function NotesPage(): React.JSX.Element {
   const [notes, setNotes] = useState<NoteItem[]>([])
@@ -170,7 +171,9 @@ export default function NotesPage(): React.JSX.Element {
 
         {/* Right Column: Note Canvas & Toolbar */}
         <Card className="md:col-span-8 p-6 flex flex-col justify-between">
-          {activeNote ? (
+          {isLoading ? (
+            <NoteEditorSkeleton />
+          ) : activeNote ? (
             <>
               {/* Note Header */}
               <div className="space-y-3 pb-3 border-b border-border/60">

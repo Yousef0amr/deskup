@@ -8,6 +8,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { useToast } from './ui/toast'
 import { WidgetHeader } from './ui/widget-header'
+import { Skeleton } from './ui/skeleton'
 import { emitDataChanged } from '../lib/events'
 import { cn } from '../lib/utils'
 
@@ -140,7 +141,23 @@ export default function HabitTracker(): React.JSX.Element {
         </form>
       )}
 
-      {loaded && habits.length === 0 && !adding ? (
+      {!loaded ? (
+        <div role="status" aria-label="Loading habits" className="space-y-2 py-1">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-elevated/30 px-2.5 py-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Skeleton className="h-5 w-5 rounded-md shrink-0" />
+                <Skeleton className="h-3.5 w-28" />
+              </div>
+              <div className="flex gap-1">
+                {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                  <Skeleton key={d} className="h-5 w-5 rounded-md" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : habits.length === 0 && !adding ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-6 text-center">
           <span className="text-2xl">🌱</span>
           <p className="text-xs text-muted max-w-[16rem]">Track small daily routines and watch your streaks grow.</p>

@@ -8,6 +8,7 @@ import { Card } from './ui/card'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
+import { Skeleton } from './ui/skeleton'
 
 interface NotesSidebarListProps {
   notes: NoteItem[]
@@ -93,7 +94,21 @@ export default function NotesSidebarList({
         {/* Notes List */}
         <div className="space-y-1.5 overflow-y-auto max-h-[440px] pr-1">
           {isLoading ? (
-            <p className="text-xs text-muted py-8 text-center">Loading notes...</p>
+            <div role="status" aria-label="Loading notes" className="space-y-2 py-1">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="p-3 rounded-xl border border-border/50 bg-elevated/30 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-2 w-2 rounded-full" />
+                    <Skeleton className="h-3.5 w-32" />
+                  </div>
+                  <Skeleton className="h-3 w-full" />
+                  <div className="flex items-center justify-between pt-0.5">
+                    <Skeleton className="h-4 w-14 rounded-md" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : filteredNotes.length === 0 ? (
             <div className="text-center py-10 text-muted text-xs space-y-1.5 border border-dashed border-border/60 rounded-xl p-3">
               <Folder className="w-6 h-6 text-indigo-500/40 mx-auto" />

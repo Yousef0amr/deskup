@@ -18,6 +18,7 @@ import CardDetailPanel from '../components/board/CardDetailPanel'
 import BoardSettingsDialog from '../components/board/BoardSettingsDialog'
 import { PRIORITY_META, TYPE_META, copyText, labelTone, newId } from '../components/board/boardMeta'
 import { Button } from '../components/ui/button'
+import { BoardSkeleton } from '../components/ui/skeletons'
 import { useToast } from '../components/ui/toast'
 import { cn } from '../lib/utils'
 
@@ -289,7 +290,7 @@ export default function BoardPage(): React.JSX.Element {
   }, [board, selectedId, settings])
 
   if (loadError) return <p className="py-12 text-center text-sm text-rose-600">Could not load the board: {loadError}</p>
-  if (!data || !board) return <div className="py-12 text-center text-sm text-muted">Loading board…</div>
+  if (!data || !board) return <BoardSkeleton />
 
   const doneColumnIds = new Set(board.columns.filter((c) => c.done).map((c) => c.id))
   const openCards = boardCards.filter((c) => !doneColumnIds.has(c.columnId))

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Cpu, HardDrive, Clock, Activity } from 'lucide-react'
 import type { SystemStats } from '../../../shared/types'
 import { cn } from '../lib/utils'
+import { Skeleton } from './ui/skeleton'
 
 const HISTORY = 40
 
@@ -80,7 +81,20 @@ export default function SystemMonitorWidget(): React.JSX.Element {
       className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-border bg-surface px-4 py-2.5"
     >
       {!stats ? (
-        <div className="h-6 w-full animate-pulse rounded bg-elevated" aria-busy />
+        <div role="status" aria-label="Loading system stats" className="flex flex-wrap items-center gap-x-8 gap-y-2 w-full">
+          <div className="flex items-center gap-2.5">
+            <Skeleton className="h-3.5 w-10" />
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-3.5 w-8" />
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Skeleton className="h-3.5 w-14" />
+            <Skeleton className="h-1.5 w-28 rounded-full" />
+            <Skeleton className="h-3.5 w-16" />
+          </div>
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="h-3.5 w-24" />
+        </div>
       ) : (
         <>
           <Stat icon={Cpu} label="CPU">

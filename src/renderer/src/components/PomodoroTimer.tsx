@@ -9,6 +9,7 @@ import ProductivityAnalyticsModal from './ProductivityAnalyticsModal'
 import { Card } from './ui/card'
 import { WidgetHeader } from './ui/widget-header'
 import { Button } from './ui/button'
+import { Skeleton } from './ui/skeleton'
 
 interface PomodoroTimerProps {
   workMinutes?: number
@@ -142,23 +143,38 @@ export default function PomodoroTimer({
 
       {/* Main Timer Display */}
       <div className="flex flex-col items-center justify-center py-5">
-        <div className={`mb-3 select-none font-mono text-[56px] font-medium leading-none tracking-tight tabular-nums ${isRunning ? 'text-text' : 'text-text/80'}`}>
-          {formattedTime}
-        </div>
+        {!state && !error ? (
+          <>
+            <Skeleton className="mb-3 h-[56px] w-40 rounded-xl" />
+            <div className="w-full space-y-1.5">
+              <Skeleton className="h-1 w-full rounded-full" />
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 w-8" />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={`mb-3 select-none font-mono text-[56px] font-medium leading-none tracking-tight tabular-nums ${isRunning ? 'text-text' : 'text-text/80'}`}>
+              {formattedTime}
+            </div>
 
-        {/* Progress Bar & Subtext */}
-        <div className="w-full space-y-1.5">
-          <div className="h-1 w-full overflow-hidden rounded-full bg-elevated">
-            <div
-              className={`h-full rounded-full transition-[width] duration-300 ${mode === 'work' ? 'bg-indigo-500' : 'bg-emerald-500'}`}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center gap-2 text-[11px] text-muted">
-            <span className="truncate">{isRunning ? `On: ${taskName}` : mode === 'work' ? 'Ready when you are' : 'Take a breather'}</span>
-            <span className="tabular-nums">{Math.round(progressPercent)}%</span>
-          </div>
-        </div>
+            {/* Progress Bar & Subtext */}
+            <div className="w-full space-y-1.5">
+              <div className="h-1 w-full overflow-hidden rounded-full bg-elevated">
+                <div
+                  className={`h-full rounded-full transition-[width] duration-300 ${mode === 'work' ? 'bg-indigo-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between items-center gap-2 text-[11px] text-muted">
+                <span className="truncate">{isRunning ? `On: ${taskName}` : mode === 'work' ? 'Ready when you are' : 'Take a breather'}</span>
+                <span className="tabular-nums">{Math.round(progressPercent)}%</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Ambient Sound Player & Controls */}

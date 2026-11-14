@@ -3,6 +3,8 @@ productName: Deskup
 directories:
   output: dist
   buildResources: resources
+# Package the Electron binary already in node_modules instead of re-downloading it.
+electronDist: node_modules/electron/dist
 files:
   - out/**/*
   - resources/**/*
@@ -14,7 +16,16 @@ win:
         - x64
   icon: resources/icon.ico
   forceCodeSigning: false
-  signAndEditExecutable: false
+  # Must stay true: this is the step that embeds icon.ico into Deskup.exe
+  # (desktop/Start-menu shortcuts take their icon from the exe).
+  signAndEditExecutable: true
+# Auto-updates: `npm run release` (with GH_TOKEN set) uploads the installer and
+# latest.yml to a GitHub Release; installed copies poll it via electron-updater.
+publish:
+  provider: github
+  owner: Yousef0amr
+  repo: deskup
+  releaseType: release
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

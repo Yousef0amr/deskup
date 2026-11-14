@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Search, Pin, X, CornerDownLeft, Image as ImageIcon } from 'lucide-react'
 import { clipImageUrl, copyClip } from '../utils/clipboardUtils'
 import type { ClipItem } from '../../../shared/types'
+import { ClipboardListSkeleton } from './ui/skeletons'
 
 export default function ClipboardPopup(): React.JSX.Element {
   const [clips, setClips] = useState<ClipItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
@@ -18,6 +20,8 @@ export default function ClipboardPopup(): React.JSX.Element {
         setClips(list)
       } catch (err) {
         console.error('Failed to load popup clips:', err)
+      } finally {
+        setIsLoading(false)
       }
     }
     load()
@@ -109,7 +113,9 @@ export default function ClipboardPopup(): React.JSX.Element {
 
       {/* List */}
       <div ref={listRef} className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <ClipboardListSkeleton count={4} />
+        ) : filtered.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-muted text-xs py-10">
             <p>{search ? 'No clippings matched search' : 'No clipboard history yet'}</p>
           </div>

@@ -11,6 +11,7 @@ import HabitTracker from '../components/HabitTracker'
 import TodaySummary from '../components/TodaySummary'
 import { useToast } from '../components/ui/toast'
 import { Button } from '../components/ui/button'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface DashboardPageProps {
   onNavigateToProfiles: () => void
@@ -24,6 +25,7 @@ export default function DashboardPage({
   onNavigateToNotes
 }: DashboardPageProps): React.JSX.Element {
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [launchingId, setLaunchingId] = useState<string | null>(null)
   const toast = useToast()
@@ -39,6 +41,8 @@ export default function DashboardPage({
         setSettings(loadedSettings)
       } catch (err) {
         console.error('Failed to load dashboard data:', err)
+      } finally {
+        setIsLoadingProfiles(false)
       }
     }
     void loadData()
@@ -74,28 +78,37 @@ export default function DashboardPage({
         <span className="mr-1 flex items-center gap-1.5 text-xs font-medium text-muted">
           <Layers className="h-3.5 w-3.5" /> Launch
         </span>
-        {profiles.map((prof) => (
-          <button
-            key={prof.id}
-            type="button"
-            onClick={() => handleQuickLaunch(prof)}
-            disabled={launchingId !== null}
-            title={`Open ${prof.items.length} ${prof.items.length === 1 ? 'item' : 'items'}`}
-            className="group flex h-8 items-center gap-2 rounded-lg border border-border bg-surface pl-2 pr-2.5 text-xs font-medium text-text transition-colors hover:border-hover hover:bg-elevated/50 disabled:opacity-60"
-          >
-            <span className="text-sm leading-none">{prof.icon}</span>
-            <span className="max-w-[12rem] truncate">{prof.name}</span>
-            {launchingId === prof.id ? (
-              <Loader2 className="h-3 w-3 animate-spin text-indigo-500" />
-            ) : (
-              <Play className="h-3 w-3 text-muted transition-colors group-hover:text-indigo-500" />
-            )}
-          </button>
-        ))}
-        <Button type="button" variant="ghost" size="sm" onClick={onNavigateToProfiles} className="text-muted">
-          <Plus className="h-3.5 w-3.5" />
-          {profiles.length === 0 ? 'Create a workspace' : 'New'}
-        </Button>
+        {isLoadingProfiles ? (
+          <div className="flex items-center gap-2" aria-busy>
+            <Skeleton className="h-8 w-36 rounded-lg" />
+            <Skeleton className="h-8 w-32 rounded-lg" />
+          </div>
+        ) : (
+          <>
+            {profiles.map((prof) => (
+              <button
+                key={prof.id}
+                type="button"
+                onClick={() => handleQuickLaunch(prof)}
+                disabled={launchingId !== null}
+                title={`Open ${prof.items.length} ${prof.items.length === 1 ? 'item' : 'items'}`}
+                className="group flex h-8 items-center gap-2 rounded-lg border border-border bg-surface pl-2 pr-2.5 text-xs font-medium text-text transition-colors hover:border-hover hover:bg-elevated/50 disabled:opacity-60"
+              >
+                <span className="text-sm leading-none">{prof.icon}</span>
+                <span className="max-w-[12rem] truncate">{prof.name}</span>
+                {launchingId === prof.id ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-indigo-500" />
+                ) : (
+                  <Play className="h-3 w-3 text-muted transition-colors group-hover:text-indigo-500" />
+                )}
+              </button>
+            ))}
+            <Button type="button" variant="ghost" size="sm" onClick={onNavigateToProfiles} className="text-muted">
+              <Plus className="h-3.5 w-3.5" />
+              {profiles.length === 0 ? 'Create a workspace' : 'New'}
+            </Button>
+          </>
+        )}
       </section>
 
       {/*

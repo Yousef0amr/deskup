@@ -11,6 +11,7 @@ import type { NoteItem } from '../../../shared/types'
 import QuickNotesDropdown from './QuickNotesDropdown'
 import { Card } from './ui/card'
 import { Button } from './ui/button'
+import { Skeleton } from './ui/skeleton'
 
 interface QuickNotesProps {
   onNavigateToNotes?: () => void
@@ -192,31 +193,54 @@ export default function QuickNotes({ onNavigateToNotes }: QuickNotesProps): Reac
       </div>
 
       {/* Editor: title + body in one surface */}
-      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-surface transition-colors focus-within:border-indigo-500/60">
-        <div className="flex items-center gap-2 border-b border-border px-3">
-          <input
-            disabled={loading || !activeNote}
-            type="text"
-            aria-label="Note title"
-            value={activeNote?.title || ''}
-            onChange={handleTitleChange}
-            placeholder="Untitled"
-            className="h-9 min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-text placeholder:text-muted focus:outline-none"
-          />
-          {activeNote && <span className="shrink-0 text-[11px] text-muted">{activeNote.folder || 'General'}</span>}
+      {loading ? (
+        <div role="status" aria-label="Loading notes" className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-surface">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 h-9">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-14" />
+          </div>
+          <div className="flex-1 space-y-2.5 p-3 min-h-[90px]">
+            <Skeleton className="h-3 w-4/5" />
+            <Skeleton className="h-3 w-3/5" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
         </div>
-        <textarea
-          disabled={loading || !activeNote}
-          aria-label="Note content"
-          value={activeNote?.content || ''}
-          onChange={handleContentChange}
-          placeholder="Jot something down — it saves as you type. Markdown works."
-          className="min-h-[90px] w-full flex-1 resize-none bg-transparent p-3 font-mono text-xs leading-relaxed text-text placeholder:text-muted focus:outline-none"
-        />
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-surface transition-colors focus-within:border-indigo-500/60">
+          <div className="flex items-center gap-2 border-b border-border px-3">
+            <input
+              disabled={!activeNote}
+              type="text"
+              aria-label="Note title"
+              value={activeNote?.title || ''}
+              onChange={handleTitleChange}
+              placeholder="Untitled"
+              className="h-9 min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-text placeholder:text-muted focus:outline-none"
+            />
+            {activeNote && <span className="shrink-0 text-[11px] text-muted">{activeNote.folder || 'General'}</span>}
+          </div>
+          <textarea
+            disabled={!activeNote}
+            aria-label="Note content"
+            value={activeNote?.content || ''}
+            onChange={handleContentChange}
+            placeholder="Jot something down — it saves as you type. Markdown works."
+            className="min-h-[90px] w-full flex-1 resize-none bg-transparent p-3 font-mono text-xs leading-relaxed text-text placeholder:text-muted focus:outline-none"
+          />
+        </div>
+      )}
       <div className="flex items-center justify-between px-1 pt-2 text-[11px] text-muted">
-        <span>{notes.length} {notes.length === 1 ? 'note' : 'notes'}</span>
-        <span className="tabular-nums">{wordCount} {wordCount === 1 ? 'word' : 'words'} · {charCount} chars</span>
+        {loading ? (
+          <>
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-3 w-24" />
+          </>
+        ) : (
+          <>
+            <span>{notes.length} {notes.length === 1 ? 'note' : 'notes'}</span>
+            <span className="tabular-nums">{wordCount} {wordCount === 1 ? 'word' : 'words'} · {charCount} chars</span>
+          </>
+        )}
       </div>
     </Card>
   )

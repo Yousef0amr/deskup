@@ -11,6 +11,8 @@ import { validateWhiteboards, type Whiteboard } from '../shared/whiteboard'
 import { join } from 'path'
 import { launchProfileItems } from './launcher'
 import { applyLoginItem } from './loginItem'
+import { setAutoDownload } from './updater'
+import { guardSave } from './sync'
 import { getInstalledApps } from './apps'
 import {
   copyClipText,
@@ -108,13 +110,13 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('todos:save', async (_, rawTodos: unknown): Promise<void> => {
-    store.set('todos', validateTodos(rawTodos))
+    store.set('todos', guardSave('todos', validateTodos(rawTodos)))
   })
 
   // Whiteboards
   ipcMain.handle('whiteboards:list', async (): Promise<Whiteboard[]> => store.get('whiteboards', []))
   ipcMain.handle('whiteboards:save', async (_, raw: unknown): Promise<void> => {
-    store.set('whiteboards', validateWhiteboards(raw))
+    store.set('whiteboards', guardSave('whiteboards', validateWhiteboards(raw)))
   })
 
   // Developer board
@@ -123,7 +125,8 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('board:save', async (_, raw: unknown): Promise<void> => {
-    store.set('boardData', validateBoardData(raw))
+    const data = validateBoardData(raw)
+    store.set('boardData', { ...data, boards: guardSave('boards', data.boards), cards: guardSave('cards', data.cards) })
   })
 
   // Habits
@@ -132,7 +135,7 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('habits:save', async (_, rawHabits: unknown): Promise<Habit[]> => {
-    const habits = validateHabits(rawHabits)
+    const habits = guardSave('habits', validateHabits(rawHabits))
     store.set('habits', habits)
     return habits
   })
@@ -219,14 +222,14 @@ export function registerIpcHandlers(
 
   ipcMain.handle('notes:saveAll', async (_, notesList: unknown): Promise<void> => {
     if (!Array.isArray(notesList)) throw new Error('Notes must be an array')
-    const cleanList: NoteItem[] = notesList.map((n) => ({
+    const cleanList: NoteItem[] = guardSave('notesList', notesList.map((n) => ({
       id: String(n.id || 'note_' + Date.now()),
       title: String(n.title || 'Untitled'),
       content: String(n.content || ''),
       createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
       updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
       pinned: Boolean(n.pinned)
-    }))
+    })))
     store.set({ notesList: cleanList, notes: cleanList[0]?.content ?? '' })
   })
 
@@ -389,12 +392,14 @@ export function registerIpcHandlers(
             : current.clipboard?.hotkey ?? 'CommandOrControl+Shift+V',
         captureImages:
           typeof p.clipboard?.captureImages === 'boolean' ? p.clipboard.captureImages : current.clipboard?.captureImages ?? true
-      }
+      },
+      autoUpdate: typeof p.autoUpdate === 'boolean' ? p.autoUpdate : current.autoUpdate
     }
 
     store.set('settings', updated)
 
     applyLoginItem(updated.launchAtLogin)
+    setAutoDownload(updated.autoUpdate)
 
     callbacks?.onSettingsChanged?.(updated)
     return updated

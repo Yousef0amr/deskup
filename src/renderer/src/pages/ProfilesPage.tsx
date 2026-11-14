@@ -8,6 +8,7 @@ import WorkspaceEmptyState from '../components/WorkspaceEmptyState'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useToast } from '../components/ui/toast'
+import { ProfilesGridSkeleton } from '../components/ui/skeletons'
 
 export default function ProfilesPage(): React.JSX.Element {
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -145,7 +146,7 @@ export default function ProfilesPage(): React.JSX.Element {
 
       {/* Main Content Area */}
       {isLoading ? (
-        <div className="text-center py-20 text-muted text-sm">Loading workspaces...</div>
+        <ProfilesGridSkeleton />
       ) : profiles.length === 0 ? (
         <WorkspaceEmptyState
           onCreateProfile={() => {

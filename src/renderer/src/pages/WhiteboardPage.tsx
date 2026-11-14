@@ -58,6 +58,7 @@ import {
 import { parseSvgToElements } from '../components/whiteboard/wbImport'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { useToast } from '../components/ui/toast'
+import { WhiteboardSkeleton } from '../components/ui/skeletons'
 import { cn } from '../lib/utils'
 
 type Tool = 'select' | 'hand' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'arrow' | 'line' | 'text' | 'sticky' | 'eraser'
@@ -1059,7 +1060,7 @@ export default function WhiteboardPage(): React.JSX.Element {
     setActiveId(null)
   }
 
-  if (!boards || !board) return <div className="py-12 text-center text-sm text-muted">Loading whiteboard…</div>
+  if (!boards || !board) return <WhiteboardSkeleton />
 
   // ---------------- selection overlay
   const selectedEls = elements.filter((el) => selected.has(el.id))

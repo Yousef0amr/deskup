@@ -3,19 +3,20 @@ import { app } from 'electron'
 /**
  * Register (or remove) Deskup as a login item.
  *
- * In a packaged build `process.execPath` *is* Deskup. In development it is the bare
- * electron.exe, which on its own opens Electron's default welcome page — so we must also
- * pass the project folder as an argument, or "Launch at login" starts the wrong thing.
- * The same path/args must be used when disabling, so Windows finds the entry to remove.
+ * Only the packaged app registers itself. In development `process.execPath` is the bare
+ * electron.exe, and a login entry pointing at it opens Electron's default window (or a
+ * stale dev build) every time Windows starts. So in dev we only clean up such entries.
  */
 export function applyLoginItem(openAtLogin: boolean): void {
   try {
-    const options: Electron.Settings = { openAtLogin, name: 'Deskup' }
-    if (!app.isPackaged) {
-      options.path = process.execPath
-      options.args = [app.getAppPath()]
+    if (app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin, name: 'Deskup' })
+      return
     }
-    app.setLoginItemSettings(options)
+    // Remove entries older dev runs may have left: the project-path one and the
+    // default-named one Electron creates when no name is passed.
+    app.setLoginItemSettings({ openAtLogin: false, name: 'Deskup', path: process.execPath, args: [app.getAppPath()] })
+    app.setLoginItemSettings({ openAtLogin: false, path: process.execPath })
   } catch (error) {
     console.warn('Could not update login item settings:', error)
   }

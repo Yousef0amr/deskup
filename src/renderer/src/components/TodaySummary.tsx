@@ -5,6 +5,7 @@ import { localDateKey } from '../../../shared/todos'
 import { currentStreak } from '../../../shared/habits'
 import { onDataChanged, requestTodoFilter, revealSection } from '../lib/events'
 import { cn } from '../lib/utils'
+import { Skeleton } from './ui/skeleton'
 
 interface TodaySummaryProps {
   focusGoalMin: number
@@ -123,9 +124,13 @@ export default function TodaySummary({ focusGoalMin }: TodaySummaryProps): React
   return (
     <section aria-label="Today" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Tile label="Focus today" actionHint="Go to the focus timer" onClick={() => revealSection('dash-focus')} footer={
-        !snap ? ' ' : focusProgress >= 1 ? 'Daily goal reached' : `${formatMinutes(Math.max(0, goal - snap.focusMin))} to your ${formatMinutes(goal)} goal`
+        !snap ? <Skeleton className="h-3.5 w-36" /> : focusProgress >= 1 ? 'Daily goal reached' : `${formatMinutes(Math.max(0, goal - snap.focusMin))} to your ${formatMinutes(goal)} goal`
       }>
-        <div className={value}>{snap ? formatMinutes(snap.focusMin) : '—'}</div>
+        {!snap ? (
+          <Skeleton className="h-8 w-16" />
+        ) : (
+          <div className={value}>{formatMinutes(snap.focusMin)}</div>
+        )}
         <Bar value={focusProgress} tone={focusProgress >= 1 ? 'bg-emerald-500' : 'bg-indigo-500'} />
       </Tile>
 
@@ -137,27 +142,35 @@ export default function TodaySummary({ focusGoalMin }: TodaySummaryProps): React
           revealSection('dash-tasks')
         }}
         footer={
-          !snap ? ' ' : snap.overdue > 0
+          !snap ? <Skeleton className="h-3.5 w-32" /> : snap.overdue > 0
             ? <span className="text-rose-600 dark:text-rose-400">{snap.overdue} overdue · {snap.openTotal} open</span>
             : `${snap.total - snap.openTotal} of ${snap.total} completed`
         }
       >
-        <div className={value}>
-          {snap ? snap.dueOpen + snap.overdue : '—'}
-          <span className="ml-1.5 text-sm font-normal text-muted">due today</span>
-        </div>
+        {!snap ? (
+          <Skeleton className="h-8 w-24" />
+        ) : (
+          <div className={value}>
+            {snap.dueOpen + snap.overdue}
+            <span className="ml-1.5 text-sm font-normal text-muted">due today</span>
+          </div>
+        )}
         <Bar value={snap && snap.total ? (snap.total - snap.openTotal) / snap.total : 0} tone="bg-sky-500" />
       </Tile>
 
       <Tile label="Habits" actionHint="Go to habits" onClick={() => revealSection('dash-habits')} footer={
-        !snap ? ' ' : snap.bestLiveStreak > 0
+        !snap ? <Skeleton className="h-3.5 w-40" /> : snap.bestLiveStreak > 0
           ? <span className="inline-flex items-center gap-1"><Flame className="h-3 w-3 text-orange-500" />Longest active streak: {snap.bestLiveStreak} days</span>
           : snap.habitsTotal ? 'Tick one off to start a streak' : 'Add a habit to start tracking'
       }>
-        <div className={value}>
-          {snap ? (snap.habitsTotal ? `${snap.habitsDone}/${snap.habitsTotal}` : '0') : '—'}
-          <span className="ml-1.5 text-sm font-normal text-muted">done</span>
-        </div>
+        {!snap ? (
+          <Skeleton className="h-8 w-20" />
+        ) : (
+          <div className={value}>
+            {snap.habitsTotal ? `${snap.habitsDone}/${snap.habitsTotal}` : '0'}
+            <span className="ml-1.5 text-sm font-normal text-muted">done</span>
+          </div>
+        )}
         <Bar value={habitProgress} tone="bg-emerald-500" />
       </Tile>
     </section>

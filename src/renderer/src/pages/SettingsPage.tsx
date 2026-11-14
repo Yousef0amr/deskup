@@ -6,7 +6,10 @@ import SettingsClipboardSection from '../components/settings/SettingsClipboardSe
 import SettingsFocusSection from '../components/settings/SettingsFocusSection'
 import SettingsSystemSection from '../components/settings/SettingsSystemSection'
 import SettingsBackupSection from '../components/settings/SettingsBackupSection'
+import SettingsUpdatesSection from '../components/settings/SettingsUpdatesSection'
+import SettingsSyncSection from '../components/settings/SettingsSyncSection'
 import { useToast } from '../components/ui/toast'
+import { SettingsSkeleton } from '../components/ui/skeletons'
 
 interface SettingsPageProps {
   onThemeChange?: (theme: 'light' | 'dark' | 'system') => void
@@ -69,7 +72,7 @@ export default function SettingsPage({ onThemeChange }: SettingsPageProps): Reac
   }
 
   if (!settings) {
-    return <div className="py-12 text-center text-sm text-muted">Loading settings…</div>
+    return <SettingsSkeleton />
   }
 
   const hasHotkeyConflict =
@@ -81,7 +84,7 @@ export default function SettingsPage({ onThemeChange }: SettingsPageProps): Reac
       <div>
         <h2 className="text-xl font-semibold tracking-tight text-text">Settings</h2>
         <p className="text-xs text-muted mt-1">
-          Appearance, focus timer, clipboard, shortcuts and backups.
+          Sync, appearance, focus timer, clipboard, shortcuts, updates and backups.
         </p>
       </div>
 
@@ -92,6 +95,9 @@ export default function SettingsPage({ onThemeChange }: SettingsPageProps): Reac
           <span>The app shortcut and the clipboard popup shortcut are the same. Change one of them.</span>
         </div>
       )}
+
+      {/* Sync & storage */}
+      <SettingsSyncSection />
 
       {/* Appearance Section */}
       <SettingsAppearanceSection settings={settings} onUpdate={updateSettings} />
@@ -108,6 +114,9 @@ export default function SettingsPage({ onThemeChange }: SettingsPageProps): Reac
 
       {/* System Integration Section */}
       <SettingsSystemSection settings={settings} onUpdate={updateSettings} />
+
+      {/* Updates */}
+      <SettingsUpdatesSection settings={settings} onUpdate={updateSettings} />
 
       {/* Backup and Data Export / Import */}
       <SettingsBackupSection onExport={handleExport} onImport={handleImport} />

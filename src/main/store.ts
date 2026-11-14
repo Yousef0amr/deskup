@@ -15,6 +15,10 @@ export interface AppStoreSchema {
   clipboardHistory: ClipItem[]
   musicTracks: MusicTrack[]
   settings: Settings
+  /** Device-local sync configuration (never synced or exported). */
+  syncConfig?: import('../shared/types').SyncConfig
+  /** Last merged sync records (see src/main/sync.ts). */
+  syncState?: { records: import('../shared/syncMerge').CollectionMaps; lastSyncAt?: number; lastWrittenHash?: string }
 }
 
 export { defaultSettings } from '../shared/settings'

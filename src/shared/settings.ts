@@ -16,7 +16,8 @@ export const defaultSettings: Settings = {
     isPaused: false,
     hotkey: 'CommandOrControl+Shift+V',
     captureImages: true
-  }
+  },
+  autoUpdate: true
 }
 
 export function mergeSettings(value: Partial<Settings> = {}): Settings {

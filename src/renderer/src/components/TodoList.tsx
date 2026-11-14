@@ -8,6 +8,7 @@ import { filterTodos, moveTodo, type TodoFilter } from '../../../shared/todos'
 import { WidgetHeader } from './ui/widget-header'
 import { useToast } from './ui/toast'
 import { Card } from './ui/card'
+import { Skeleton } from './ui/skeleton'
 import { emitDataChanged, onTodoFilterRequest, revealSection } from '../lib/events'
 
 type FilterMode = TodoFilter
@@ -184,8 +185,14 @@ export default function TodoList(): React.JSX.Element {
       {/* Todo Items */}
       <div className="-mx-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1">
         {isLoading ? (
-          <div className="space-y-1.5 py-1" aria-busy>
-            {[0, 1, 2].map((i) => <div key={i} className="h-9 animate-pulse rounded-lg bg-elevated" />)}
+          <div className="space-y-1.5 py-1" role="status" aria-label="Loading tasks">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-2.5 rounded-lg border border-border/40 bg-elevated/30 px-3 py-2">
+                <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
+                <Skeleton className="h-3.5 flex-1" />
+                <Skeleton className="h-4 w-12 rounded-md" />
+              </div>
+            ))}
           </div>
         ) : filteredTodos.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-1 py-8 text-center text-xs text-muted">

@@ -7,7 +7,9 @@ import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './shortcuts'
 import { startClipboardWatcher, stopClipboardWatcher } from './clipboard'
 import { createClipboardPopupWindow } from './clipboardPopup'
 import { registerMediaProtocol, registerMusicIpc } from './media'
-import { registerSnipIpc } from './snipper'
+import { disposeSnipper, prewarmSnipWindow, registerSnipIpc } from './snipper'
+import { initUpdater, stopUpdater } from './updater'
+import { initSync, isNetworkAllowed, stopSync } from './sync'
 import { applyLoginItem } from './loginItem'
 import { BrowserWindow } from 'electron'
 import { app } from 'electron/main'
@@ -91,6 +93,9 @@ app.on('will-quit', () => {
   stopFocusService()
   stopClipboardWatcher()
   unregisterGlobalShortcuts()
+  disposeSnipper()
+  stopUpdater()
+  stopSync()
 })
 
 app.whenReady().then(() => {
@@ -102,6 +107,11 @@ app.whenReady().then(() => {
 
   registerMediaProtocol()
   registerSnipIpc()
+  initSync()
+  initUpdater({
+    autoDownload: () => store.get('settings', defaultSettings).autoUpdate !== false,
+    allowed: isNetworkAllowed
+  })
   // Keep the OS startup entry in sync with the setting (also repairs stale entries).
   applyLoginItem(store.get('settings', defaultSettings).launchAtLogin)
   registerMusicIpc(() => mainWindow)
@@ -110,6 +120,9 @@ app.whenReady().then(() => {
 
   // Initialize clipboard popup window
   createClipboardPopupWindow()
+
+  // Load the snipping overlay hidden so the hotkey shows it instantly
+  prewarmSnipWindow()
 
   // Start polling clipboard
   startClipboardWatcher()

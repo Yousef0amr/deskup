@@ -111,6 +111,8 @@ export interface Settings {
   minimizeToTray: boolean
   dailyFocusGoalMin: number
   clipboard: ClipboardSettings
+  /** Download updates in the background as soon as they are found. */
+  autoUpdate: boolean
 }
 
 export interface SystemStats {
@@ -120,6 +122,102 @@ export interface SystemStats {
   memPercent: number
   uptimeHours: number
   appMemMb: number
+}
+
+export type SyncMode = 'online' | 'auto' | 'offline'
+
+export type WorkspaceKind = 'personal' | 'team'
+
+export interface SyncConfig {
+  /** 'local' = this device only; 'folder' = sync through a folder the user chose. */
+  provider: 'local' | 'folder'
+  folderPath: string
+  mode: SyncMode
+  deviceId: string
+  deviceName: string
+  /** personal = one person's devices (everything syncs); team = shared team data only. */
+  workspaceKind: WorkspaceKind
+  workspaceName: string
+  /** The user's display name in a team. */
+  memberName: string
+  /** The folder is protected by a passphrase. */
+  encrypted: boolean
+  /** Folder key, encrypted with the OS keychain (safeStorage). Never leaves this device. */
+  keyBlob?: string
+}
+
+export interface SyncMember {
+  name: string
+  devices: string[]
+  you: boolean
+}
+
+/** What is already in a folder, shown before the user joins it. */
+export interface SyncFolderInfo {
+  exists: boolean
+  kind?: WorkspaceKind
+  name?: string
+  encrypted: boolean
+  /** Member/device names (empty when the folder is encrypted). */
+  members: string[]
+  deviceCount: number
+  writable: boolean
+}
+
+export interface SyncSetup {
+  folderPath: string
+  /** Required when the folder has no workspace yet. */
+  create?: { kind: WorkspaceKind; name: string }
+  /** Unlocks an encrypted folder, or protects a new one. */
+  passphrase?: string
+  memberName?: string
+  /** Team only: share the workspaces/boards/whiteboards already on this device. */
+  shareExisting: boolean
+}
+
+export interface SyncStatus {
+  provider: SyncConfig['provider']
+  mode: SyncMode
+  state: 'local' | 'idle' | 'syncing' | 'offline' | 'waiting' | 'error' | 'locked'
+  /** Local edits not yet written to the sync folder. */
+  pending: number
+  lastSyncAt?: number
+  error?: string
+  folderPath?: string
+  deviceName: string
+  /** Names of other devices that share the folder. */
+  otherDevices: string[]
+  members: SyncMember[]
+  workspaceKind?: WorkspaceKind
+  workspaceName?: string
+  encrypted?: boolean
+  memberName?: string
+}
+
+export interface UpdateStatus {
+  state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'error' | 'unsupported'
+  currentVersion: string
+  /** Version of the update being offered / downloaded. */
+  version?: string
+  percent?: number
+  message?: string
+  checkedAt?: number
+}
+
+export interface SnipBegin {
+  session: number
+  /** Overlay size in CSS pixels (the display's bounds). */
+  width: number
+  height: number
+  scaleFactor: number
+}
+
+export interface SnipFrame {
+  session: number
+  width: number
+  height: number
+  /** BGRA pixels, row-major. */
+  pixels: Uint8Array
 }
 
 export interface DeskupAPI {
@@ -201,10 +299,48 @@ export interface DeskupAPI {
     exportAll(): Promise<boolean>
     importAll(): Promise<boolean>
   }
+  sync: {
+    getStatus(): Promise<SyncStatus>
+    onStatus(callback: (status: SyncStatus) => void): () => void
+    /** Fired after changes from other devices were applied locally. */
+    onApplied(callback: (info: { collections: string[] }) => void): () => void
+    getConfig(): Promise<Pick<SyncConfig, 'provider' | 'folderPath' | 'mode' | 'deviceName' | 'memberName'>>
+    chooseFolder(): Promise<string | null>
+    inspectFolder(folderPath: string): Promise<SyncFolderInfo>
+    /** Create or join the workspace in a folder and start syncing. */
+    setup(options: SyncSetup): Promise<SyncStatus>
+    /** Enter the passphrase on a device whose stored key is unavailable. */
+    unlock(passphrase: string): Promise<SyncStatus>
+    setMemberName(name: string): Promise<SyncStatus>
+    useLocal(): Promise<SyncStatus>
+    setMode(mode: SyncMode): Promise<SyncStatus>
+    setDeviceName(name: string): Promise<SyncStatus>
+    syncNow(): Promise<SyncStatus>
+    /** The main window reloaded its views after a sync; earlier saves may be stale. */
+    viewsRefreshed(): void
+  }
+  updates: {
+    getStatus(): Promise<UpdateStatus>
+    onStatus(callback: (status: UpdateStatus) => void): () => void
+    check(): Promise<UpdateStatus>
+    download(): Promise<void>
+    /** Quit and install a downloaded update. */
+    install(): Promise<void>
+  }
   snip: {
     start(): Promise<void>
-    getCapture(): Promise<{ dataUrl: string; width: number; height: number } | null>
+    /** Overlay renderer signals it is mounted and listening. */
+    ready(): void
+    onBegin(callback: (begin: SnipBegin) => void): () => void
+    onFrame(callback: (frame: SnipFrame) => void): () => void
+    /** Tells the main process this session's frame is painted, so the overlay can be shown. */
+    painted(session: number): void
+    onReset(callback: () => void): () => void
+    copyImage(dataUrl: string): Promise<void>
     saveImage(dataUrl: string): Promise<boolean>
+    pin(dataUrl: string, rect: { x: number; y: number; width: number; height: number }): Promise<void>
+    /** Runs OCR on the image, copies the text to the clipboard and returns it. */
+    copyText(dataUrl: string): Promise<string>
     close(): Promise<void>
   }
 }
